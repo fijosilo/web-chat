@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Web Chat</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="../public/chat.css" type="text/css" />
+    <script src="/socket.io/socket.io.js"></script>
+  </head>
+  <body>
+    <header></header>
+    <main>
+      <section id="tree">
+        <div></div>
+      </section>
+      <section id="chat">
+        <div id="chatOutput">
+          <audio id="stream-audio"></audio>
+          <div></div>
+        </div>
+        <div id="chatInput">
+          <form>
+            <!-- <label for="chatInputMessage">Message</label> -->
+            <input id="chatInputMessage" type="text" placeholder="Enter Message..." autocomplete="off" required>
+            <input id="chatInputSend" type="submit" value="SEND">
+          </form>
+        </div>
+      </section>
+      <section id="info">
+        <div>
+          
+        </div>
+      </section>
+    </main>
+    <footer></footer>
+  </body>
+  <script src="../public/chat.mjs" type="module"></script>
+</html>

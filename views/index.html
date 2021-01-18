@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Connect</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="../public/index.css" type="text/css" />
+    <script src="../public/index.js"></script>
+  </head>
+  <body>
+    <header></header>
+    <main>
+      <div id="id">
+        <form id="id-form" name="id" action="/auth" method="post">
+          <div>
+            <label class="id-input-label" for="id-username">Username:</label>
+            <input id="id-username" class="id-input" name="username" type="text" placeholder="Anonymous" />
+          </div>
+          <div>
+            <label class="id-input-label" for="id-password">Password:</label>
+            <input id="id-password" class="id-input" name="password" type="password" placeholder="" disabled />
+          </div>
+          <div>
+            <label class="id-input-label" for="id-email">Email:</label>
+            <input id="id-email" class="id-input" name="email" type="email" placeholder="" disabled />
+          </div>
+          <div>
+              <input id="id-anonymous" name="mode" type="radio" value="Anonymous" checked />
+              <label class="id-radio-label" for="id-anonymous">Anonymous</label>
+              <input id="id-login" name="mode" type="radio" value="Login" />
+              <label class="id-radio-label" for="id-login">Login</label>
+              <input id="id-register" name="mode" type="radio" value="Register" />
+              <label class="id-radio-label" for="id-register">Register</label>
+          </div>
+          <div>
+            <button id="id-submit" type="submit">Connect</button>
+          </div>
+        </form>
+      </div>
+    </main>
+    <footer></footer>
+  </body>
+</html>
