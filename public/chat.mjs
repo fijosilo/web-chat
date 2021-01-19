@@ -135,7 +135,7 @@ window.addEventListener('load', () => {
       window.navigator.mediaDevices.getUserMedia(constraints)
         .then((stream) => {
           media.stream = stream;
-          media.recorder = new MediaRecorder(stream);
+          media.recorder = new MediaRecorder(stream, {mimeType: 'audio/webm;codecs=opus'});
           media.recorder.ondataavailable = function(e) {
             socket.emit('streamAudio', {mime: media.recorder.mimeType, media: e.data});
           };
@@ -175,7 +175,7 @@ window.addEventListener('load', () => {
           let elemRoomTitleText = document.createElement("h"+iteration);
           elemRoomTitleText.innerText = room.name;
           elemRoomTitle.appendChild(elemRoomTitleText);
-          elemRoomTitle.addEventListener('dblclick', cmdMove);
+          elemRoomTitle.addEventListener('click', cmdMove);
         }
         elemRoom.appendChild(elemRoomTitle);
         // update DOM

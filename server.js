@@ -36,10 +36,8 @@ const sockets = require('./components/sockets.js');
 // SETUP
 // security settings
 /*
+app.disable('x-powered-by');
 app.use(helmet({
-  hidePoweredBy: {
-    setTo: ''
-  },
   frameguard: {
     action: 'SAMEORIGIN'
   },
