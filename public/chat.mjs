@@ -1,19 +1,122 @@
 const socket = io();
+//import WRTC from './WRTC.mjs';
+import Receptor from './Receptor.mjs';
 
+
+
+  // micro stream delay about 200ms give or take cause of reaction time
+  // recording 100ms
+  // reaching virtual machine 60ms but ping to it varies from 5-60
+  // receiving till oncanplay 120ms
+  // from virtual machine till speakers about 300-400ms
 
 window.addEventListener('load', () => {
   /********VARIABLES********/
+  console.log('WINDOW LOAD');
 
   let clients;
   let rooms;
 
   let tree = document.getElementById('tree').getElementsByTagName('div')[0];
   let chatOutput = document.getElementById('chatOutput').getElementsByTagName('div')[0];
-  let audio = document.getElementById('stream-audio');
 
   document.getElementById('chatInput').addEventListener('submit', cmdMessage, true);
 
+  /********Media API's********/
 
+  let media = {};
+  let feedback = document.getElementById('stream-feedback');
+  function cmdToggleMicrophone(e) {
+    ping();
+    if(media.recorder) {
+      let elemMicrophoneImg = document.getElementById('client-microphone').getElementsByTagName('img')[0];
+      switch(media.recorder.state) {
+        case 'recording':
+          media.recorder.pause();
+          elemMicrophoneImg.src = "../public/media/microphone_off.svg";
+          break;
+        case 'paused':
+          media.recorder.resume();
+          elemMicrophoneImg.src = "../public/media/microphone_on.svg";
+          break;
+        case 'inactive':
+          break;
+        default:
+          break;
+      }
+    } else {
+      // initialize
+      let constraints = {audio: true, video: false};
+      window.navigator.mediaDevices.getUserMedia(constraints)
+        .then((stream) => {
+          media.stream = stream;
+          //feedback.srcObject = media.stream;
+          //feedback.onloadedmetadata = () => {feedback.play();};
+          media.recorder = new MediaRecorder(stream, {mimeType: 'audio/webm;codecs=opus'});
+          media.recorder.ondataavailable = function(e) {
+            socket.emit('eventStreamAudio', {blob: e.data});
+          };
+          media.recorder.start(100);
+          // change icon
+          let elemMicrophoneImg = document.getElementById('client-microphone').getElementsByTagName('img')[0];
+          elemMicrophoneImg.src = "../public/media/microphone_on.svg";
+        })
+        .catch((err) => {
+          console.log(err);
+          return;
+        });
+    }
+  }
+
+  let firstBlob = true;
+  socket.on('eventStreamAudio', (data) => {
+    if(firstBlob) {
+      firstBlob = false;
+      socket.emit('ping');
+    }
+    clients[data.id].receptor.addBlob(data.blob);
+  });
+
+
+
+
+
+  let pingTest;
+  let startdate;
+  let enddate;
+  function ping() {
+    pingTest = true;
+    startdate = new Date();
+    socket.emit('ping');
+  }
+  let datenow;
+  socket.on('ping', () => {
+    if(pingTest) {
+      enddate = new Date();
+      console.log(enddate - startdate);
+    } else {
+      socket.emit('ping');
+    }
+  });
+
+  /********WebRTC********/
+/*
+  let wrtc = new WRTC(sendSignal, eventMessage);
+
+  function sendSignal(signal) {
+    socket.emit('wrtcSignal', signal);
+  }
+
+  socket.on('wrtcSignal', function(signal) {
+    wrtc.signal(signal);
+  });
+
+  function eventMessage(id, channel, message) {
+    clientMessage(id, message, () => {
+      console.log('Client message');
+    });
+  }
+*/
   /********SOCKETS********/
 
   socket.on('connection', function() {
@@ -41,37 +144,18 @@ window.addEventListener('load', () => {
   socket.on('eventMove', (data) => {
     clientMove(data.id, data.room, () => {
       console.log('Client moved');
+      // webrtc
+      /*
+      if(data.id == socket.id) {
+        Object.entries(clients).forEach(([key, value]) => {
+          if(key != socket.id && value.room == clients[socket.id].room) {
+            wrtc.openChannel(key, clients[socket.id].room);
+          }
+        });
+      }
+      */
+      //
     });
-  });
-
-  socket.on('eventMessage', (data) => {
-    clientMessage(data.id, data.message, () => {
-      console.log('Client message');
-    });
-  });
-
-  let mediaSource;
-  let sourceBuffer;
-  let audioReady = false;
-  function sourceBufferReady() {
-    sourceBuffer.removeEventListener('updateend', sourceBufferReady);
-    audioReady = true;
-    audio.play();
-  }
-  socket.on('eventStreamAudio', (data) => {
-    if(!audioReady) {
-      mediaSource = new MediaSource();
-      audio.src = window.URL.createObjectURL(mediaSource);
-      mediaSource.addEventListener('sourceopen', () => {
-        sourceBuffer = mediaSource.addSourceBuffer(data.mime);
-        sourceBuffer.addEventListener('updateend', sourceBufferReady);
-        sourceBuffer.appendBuffer(data.media);
-      });
-    } else {
-      sourceBuffer.appendBuffer(data.media);
-      audio.play();
-    }
-    // to end the stream call mediaSource.endOfStream();
   });
 
   socket.on('eventDisconnect', (data) => {
@@ -109,46 +193,22 @@ window.addEventListener('load', () => {
     elemInput.value = '';
     // send message
     socket.emit('cmdMessage', {message: message});
+    //webrtc
+    Object.entries(clients).forEach(([key, value]) => {
+      if(key != socket.id && value.room == clients[socket.id].room) {
+        wrtc.sendMessage(key, clients[socket.id].room, message);
+      }
+    });
   }
 
-  let media = {};
+/*
   function cmdToggleMicrophone(e) {
-    if(media.recorder) {
-      let elemMicrophoneImg = document.getElementById('client-microphone').getElementsByTagName('img')[0];
-      switch(media.recorder.state) {
-        case 'recording':
-          media.recorder.pause();
-          elemMicrophoneImg.src = "../public/media/microphone_off.svg";
-          break;
-        case 'paused':
-          media.recorder.resume();
-          elemMicrophoneImg.src = "../public/media/microphone_on.svg";
-          break;
-        case 'inactive':
-          break;
-        default:
-          break;
-      }
-    } else {
-      // initialize
-      let constraints = {audio: true, video: false};
-      window.navigator.mediaDevices.getUserMedia(constraints)
-        .then((stream) => {
-          media.stream = stream;
-          media.recorder = new MediaRecorder(stream, {mimeType: 'audio/webm;codecs=opus'});
-          media.recorder.ondataavailable = function(e) {
-            socket.emit('streamAudio', {mime: media.recorder.mimeType, media: e.data});
-          };
-          media.recorder.start(100);
-          // change icon
-          let elemMicrophoneImg = document.getElementById('client-microphone').getElementsByTagName('img')[0];
-          elemMicrophoneImg.src = "../public/media/microphone_on.svg";
-        })
-        .catch((err) => {
-          console.log(err);
-          return;
-        });
-    }
+    //
+  }
+*/
+
+  function cmdToggleCamera(e) {
+    //
   }
 
   /********DOM********/
@@ -233,9 +293,21 @@ window.addEventListener('load', () => {
     }
     elemClient.appendChild(elemClientUsername);
     // client microphone and speaker elements
+    let elemClientCamera;
     let elemClientMicrophone;
     let elemClientSpeaker;
     if(id == socket.id) {
+      // client camera element
+      elemClientCamera = document.createElement('button');
+      elemClientCamera.setAttribute('id', "client-camera");
+      elemClientCamera.setAttribute('class', "client-camera");
+      let elemClientCameraImg = document.createElement('img');
+      elemClientCameraImg.setAttribute('src', "../public/media/camera_off.svg");
+      elemClientCameraImg.setAttribute('alt', "camera");
+      elemClientCameraImg.setAttribute('width', "20");
+      elemClientCameraImg.setAttribute('height', "20");
+      elemClientCamera.appendChild(elemClientCameraImg);
+      elemClientCamera.addEventListener('click', cmdToggleCamera);
       // client microphone element
       elemClientMicrophone = document.createElement('button');
       elemClientMicrophone.setAttribute('id', "client-microphone");
@@ -258,6 +330,13 @@ window.addEventListener('load', () => {
       elemClientSpeakerImg.setAttribute('height', "20");
       elemClientSpeaker.appendChild(elemClientSpeakerImg);
     } else {
+      // client camera element
+      elemClientCamera = document.createElement('img');
+      elemClientCamera.setAttribute('class', "client-camera");
+      elemClientCamera.setAttribute('src', "../public/media/camera_off.svg");
+      elemClientCamera.setAttribute('alt', "camera");
+      elemClientCamera.setAttribute('width', "20");
+      elemClientCamera.setAttribute('height', "20");
       // client microphone element
       elemClientMicrophone = document.createElement('img');
       elemClientMicrophone.setAttribute('class', "client-microphone");
@@ -272,7 +351,14 @@ window.addEventListener('load', () => {
       elemClientSpeaker.setAttribute('alt', "speaker");
       elemClientSpeaker.setAttribute('width', "20");
       elemClientSpeaker.setAttribute('height', "20");
+      // audio output
+      let elemClientAudio = document.createElement('audio');
+      elemClientAudio.setAttribute('class', "client-audio");
+      elemClientAudio.setAttribute('style', "display: none;");
+      client.receptor = new Receptor('audio/webm;codecs=opus', elemClientAudio);
+      elemClient.appendChild(elemClientAudio);
     }
+    elemClient.appendChild(elemClientCamera);
     elemClient.appendChild(elemClientMicrophone);
     elemClient.appendChild(elemClientSpeaker);
     return done(elemClient);
@@ -370,31 +456,3 @@ window.addEventListener('load', () => {
   }
   
 });
-
-
-/*
-
-
-let constrains = {audio: true, video: false}
-
-navigator.mediaDevices.getUserMedia(constraints)
-  .then((stream) => {
-    // use the stream
-  })
-  .catch((err) => {
-    // handle the error
-    // then the promise is rejected with NotAllowedError or NotFoundError respectively.
-  });
-
-
-
-
-
-
-
-The getUserMedia() method is only available in secure contexts. 
-A secure context is one the browser is reasonably confident contains a document which was loaded securely, using HTTPS/TLS, and has limited exposure to insecure contexts. 
-If a document isn't loaded in a secure context, the navigator.mediaDevices property is undefined, making access to getUserMedia() impossible.
-
-Attempting to access getUserMedia() in this situation will result in a TypeError.
-*/

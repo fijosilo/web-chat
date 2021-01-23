@@ -64,6 +64,7 @@ body {
   display: flex;
   flex-direction: row;
   align-items: center;
+  max-width: 100%;
 }
 .client-avatar {
   border: 2px solid #4CAF50;
@@ -74,7 +75,6 @@ body {
   color: #AFAF00;
   flex-grow: 2;
   min-width: 25px;
-  max-width: calc(100% - 5px - 24px - 20px - 5px - 20px - 5px);
   display: flex;
   flex-direction: column;
 }
@@ -85,6 +85,11 @@ body {
 .client-username > p {
   overflow: hidden;
 }
+.client-camera {
+  margin-left: 5px;
+  margin-right: 1px;
+  opacity: 0.5;
+}
 .client-microphone {
   margin-right: 1px;
   opacity: 0.5;
@@ -92,6 +97,10 @@ body {
 .client-speaker {
   margin-right: 1px;
   opacity: 0.5;
+}
+#client-camera:hover {
+  opacity: 1.0;
+  cursor: pointer;
 }
 #client-microphone:hover {
   opacity: 1.0;

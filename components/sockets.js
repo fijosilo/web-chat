@@ -79,6 +79,13 @@ module.exports = function(io) {
     socket.broadcast.emit('eventConnect', {id: socket.id, client: clients[socket.id]});
 
 
+    // WEBRTC SIGNAL
+    socket.on('wrtcSignal', (data) => {
+      data.activator = socket.id;
+      io.to(data.target).emit('wrtcSignal', data);
+    });
+
+
     // CLIENT CHANGED ROOM
     socket.on('cmdMove', (data) => {
       if(data.room != clients[socket.id].room) {
@@ -97,10 +104,15 @@ module.exports = function(io) {
       io.in("room-"+clients[socket.id].room).emit('eventMessage', data);
     });
 
-    // CLIENT SENT AUDIO STREAM
-    socket.on('streamAudio', (data) => {
+    // CLIENT SENT AUDIO
+    socket.on('eventStreamAudio', (data) => {
       data.id = socket.id;
-      socket.to("room-"+clients[socket.id].room).emit('eventStreamAudio', data);
+      socket.broadcast.emit('eventStreamAudio', data);
+    });
+
+    // PING
+    socket.on('ping', () => {
+      socket.broadcast.emit('ping');
     });
 
     // CLIENT DISCONNECTED
