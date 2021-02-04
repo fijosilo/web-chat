@@ -1,9 +1,22 @@
+require('dotenv').config();
 const fs = require('fs');
 
 module.exports = function(io) {
 
-  // load divisions and chat rooms
-  //let divisions = JSON.parse(fs.readFileSync('assets/tree.json', 'utf8'));
+  let iceservers = {
+    iceServers: [
+      {
+        'urls': 'stun:' + process.env.STUN_SERVER,
+        'credential': process.env.STUN_PASS,
+        'username': process.env.STUN_USER
+      },
+      {
+        'urls': 'turn:' + process.env.TURN_SERVER,
+        'credential': process.env.TURN_PASS,
+        'username': process.env.TURN_USER
+      }
+    ]
+  };
 
   let rooms = [
     {
@@ -63,7 +76,10 @@ module.exports = function(io) {
       rooms: []
     }
   ]
+  
   let clients = {};
+
+  let wrtcPolite = {};
 
   // sockets
   io.on('connection', socket => {
@@ -72,19 +88,33 @@ module.exports = function(io) {
     // update server
     clients[socket.id] = {
       username: socket.request.user.username,
-      room: ''
+      room: '',
+      media: {
+        camera: false,
+        monitor: {},
+        microphone: false,
+        speaker: {}
+      }
     };
+    wrtcPolite[socket.id] = {};
+    Object.keys(clients).forEach((key) => {
+      if(key != socket.id) {
+        wrtcPolite[socket.id][key] = true;
+      }
+      clients[socket.id].media.monitor[key] = true;
+      clients[socket.id].media.speaker[key] = true;
+    });
     // update clients
-    socket.emit('connected', {clients: clients, rooms: rooms});
+    socket.emit('connected', {clients: clients, rooms: rooms, iceservers: iceservers, polite: wrtcPolite[socket.id]});
     socket.broadcast.emit('eventConnect', {id: socket.id, client: clients[socket.id]});
+
 
 
     // WEBRTC SIGNAL
     socket.on('wrtcSignal', (data) => {
       data.activator = socket.id;
-      io.to(data.target).emit('wrtcSignal', data);
+      io.to(data.target).emit('wrtcEventSignal', data);
     });
-
 
     // CLIENT CHANGED ROOM
     socket.on('cmdMove', (data) => {
@@ -98,28 +128,44 @@ module.exports = function(io) {
       }
     });
 
-    // CLIENT SENT MESSAGE
-    socket.on('cmdMessage', (data) => {
-      data.id = socket.id;
-      io.in("room-"+clients[socket.id].room).emit('eventMessage', data);
+    // CLIENT MEDIA
+    socket.on('cmdMedia', (data) => {
+      data.activator = socket.id;
+      switch(data.type) {
+        case 'camera':
+        case 'microphone':
+          if(data.target != data.activator) {
+            // client can't toggle others camera or microphone
+            return;
+          }
+          clients[data.activator].media[data.type] = data.state;
+          io.emit('eventMedia', data);
+          break;
+        case 'monitor':
+        case 'speaker':
+          clients[data.activator].media[data.type][data.target] = data.state;
+          if(data.target == socket.id) {
+            // client toggled himself inform everyone
+            io.emit('eventMedia', data);
+          } else {
+            // client toggled remote client inform client and remote client
+            io.to(data.target).emit('eventMedia', data);
+            io.to(socket.id).emit('eventMedia', data);
+          }
+          break;
+        default:
+          break;
+      }
     });
 
-    // CLIENT SENT AUDIO
-    socket.on('eventStreamAudio', (data) => {
-      data.id = socket.id;
-      socket.broadcast.emit('eventStreamAudio', data);
-    });
 
-    // PING
-    socket.on('ping', () => {
-      socket.broadcast.emit('ping');
-    });
 
     // CLIENT DISCONNECTED
     socket.on('disconnect', () => {
       console.log('CLIENT DISCONNECTED');
       // update server
       delete clients[socket.id];
+      delete wrtcPolite[socket.id];
       // update clients
       socket.broadcast.emit('eventDisconnect', {id: socket.id});
     });

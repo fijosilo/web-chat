@@ -1,14 +1,11 @@
 const socket = io();
-//import WRTC from './WRTC.mjs';
-import Receptor from './Receptor.mjs';
+import WRTC from './WRTC.mjs';
 
 
+// TODO: put usernames on their streams
+// fix bugs
+// on server disconnect need to close all p2p comunications
 
-  // micro stream delay about 200ms give or take cause of reaction time
-  // recording 100ms
-  // reaching virtual machine 60ms but ping to it varies from 5-60
-  // receiving till oncanplay 120ms
-  // from virtual machine till speakers about 300-400ms
 
 window.addEventListener('load', () => {
   /********VARIABLES********/
@@ -17,106 +14,27 @@ window.addEventListener('load', () => {
   let clients;
   let rooms;
 
+  document.getElementById('chatInput').addEventListener('submit', cmdMessage, true);
+
   let tree = document.getElementById('tree').getElementsByTagName('div')[0];
   let chatOutput = document.getElementById('chatOutput').getElementsByTagName('div')[0];
 
-  document.getElementById('chatInput').addEventListener('submit', cmdMessage, true);
+  /********WEBRTC********/
+  let wrtc;
 
-  /********Media API's********/
-
-  let media = {};
-  let feedback = document.getElementById('stream-feedback');
-  function cmdToggleMicrophone(e) {
-    ping();
-    if(media.recorder) {
-      let elemMicrophoneImg = document.getElementById('client-microphone').getElementsByTagName('img')[0];
-      switch(media.recorder.state) {
-        case 'recording':
-          media.recorder.pause();
-          elemMicrophoneImg.src = "../public/media/microphone_off.svg";
-          break;
-        case 'paused':
-          media.recorder.resume();
-          elemMicrophoneImg.src = "../public/media/microphone_on.svg";
-          break;
-        case 'inactive':
-          break;
-        default:
-          break;
-      }
-    } else {
-      // initialize
-      let constraints = {audio: true, video: false};
-      window.navigator.mediaDevices.getUserMedia(constraints)
-        .then((stream) => {
-          media.stream = stream;
-          //feedback.srcObject = media.stream;
-          //feedback.onloadedmetadata = () => {feedback.play();};
-          media.recorder = new MediaRecorder(stream, {mimeType: 'audio/webm;codecs=opus'});
-          media.recorder.ondataavailable = function(e) {
-            socket.emit('eventStreamAudio', {blob: e.data});
-          };
-          media.recorder.start(100);
-          // change icon
-          let elemMicrophoneImg = document.getElementById('client-microphone').getElementsByTagName('img')[0];
-          elemMicrophoneImg.src = "../public/media/microphone_on.svg";
-        })
-        .catch((err) => {
-          console.log(err);
-          return;
-        });
-    }
-  }
-
-  let firstBlob = true;
-  socket.on('eventStreamAudio', (data) => {
-    if(firstBlob) {
-      firstBlob = false;
-      socket.emit('ping');
-    }
-    clients[data.id].receptor.addBlob(data.blob);
-  });
-
-
-
-
-
-  let pingTest;
-  let startdate;
-  let enddate;
-  function ping() {
-    pingTest = true;
-    startdate = new Date();
-    socket.emit('ping');
-  }
-  let datenow;
-  socket.on('ping', () => {
-    if(pingTest) {
-      enddate = new Date();
-      console.log(enddate - startdate);
-    } else {
-      socket.emit('ping');
-    }
-  });
-
-  /********WebRTC********/
-/*
-  let wrtc = new WRTC(sendSignal, eventMessage);
-
-  function sendSignal(signal) {
+  function wrtcSendSignal(signal) {
     socket.emit('wrtcSignal', signal);
   }
-
-  socket.on('wrtcSignal', function(signal) {
-    wrtc.signal(signal);
+  socket.on('wrtcEventSignal', function(signal) {
+    wrtc.receiveSignal(signal);
   });
 
-  function eventMessage(id, channel, message) {
-    clientMessage(id, message, () => {
+  function wrtcReceiveMessage(id, channel, message) {
+    clientMessage(id, channel, message, () => {
       console.log('Client message');
     });
   }
-*/
+
   /********SOCKETS********/
 
   socket.on('connection', function() {
@@ -124,11 +42,19 @@ window.addEventListener('load', () => {
   });
 
   socket.on('connected', function(data) {
-    clients = data.clients;
-    rooms = data.rooms;
+    console.log('Loading wrtc...');
+    wrtc = new WRTC(wrtcSendSignal, wrtcReceiveMessage, data.iceservers, data.polite);
+    wrtc.createStream();
+    Object.keys(data.clients).forEach((key) => {
+      if(key != socket.id) {
+        wrtc.createConnection(key);
+      }
+    });
     console.log('Loading rooms...');
+    rooms = data.rooms;
     loadRooms(rooms, tree, () => {
       console.log('Loading clients...');
+      clients = data.clients;
       loadClients(clients, () => {
         console.log('Loaded');
       });
@@ -136,30 +62,104 @@ window.addEventListener('load', () => {
   });
 
   socket.on('eventConnect', (data) => {
-    clientConnect(data.id, data.client, () => {
+    // update clients
+    clients[data.id] = data.client;
+    clients[socket.id].media.monitor[data.id] = true;
+    clients[socket.id].media.speaker[data.id] = true;
+    wrtc.createConnection(data.id);
+    clientConnect(data.id, clients[data.id], () => {
       console.log('Client connected');
     });
   });
 
   socket.on('eventMove', (data) => {
-    clientMove(data.id, data.room, () => {
-      console.log('Client moved');
-      // webrtc
-      /*
-      if(data.id == socket.id) {
-        Object.entries(clients).forEach(([key, value]) => {
-          if(key != socket.id && value.room == clients[socket.id].room) {
-            wrtc.openChannel(key, clients[socket.id].room);
-          }
-        });
+    // close wrtc room channel
+    if(clients[socket.id].room != '') {
+      if(clients[data.id].room == clients[socket.id].room) {
+        if(data.id != socket.id) {
+          // remote client is leaving the room
+          wrtc.closeChannel(data.id, clients[socket.id].room);
+          wrtc.closeStream(data.id);
+          chatToggleStream(data.id, false);
+        } else {
+          // local client is leaving the room
+          Object.keys(clients).forEach((key) => {
+            if(key != socket.id) {
+              if(clients[key].room == clients[socket.id].room) {
+                wrtc.closeStream(key);
+                chatToggleStream(key, false);
+              }
+            }
+          });
+        }
       }
-      */
-      //
+    }
+    // update client room
+    clientMove(data.id, data.room, () => {
+      // open wrtc channel
+      if(clients[socket.id].room != '') {
+        if(clients[data.id].room == clients[socket.id].room) {
+          if(data.id != socket.id) {
+            // remote client is joining the room
+            wrtc.createChannel(data.id, data.room);
+            wrtc.openStream(data.id);
+            if(clients[data.id].media['camera']) {
+              chatToggleStream(data.id, true);
+            }
+          } else {
+            // local client is joining the room
+            Object.keys(clients).forEach((key) => {
+              if(key != socket.id) {
+                if(clients[key].room == clients[socket.id].room) {
+                  wrtc.openStream(key);
+                  if(clients[key].media['camera']) {
+                    chatToggleStream(key, true);
+                  }
+                }
+              }
+            });
+          }
+        }
+      }
+      console.log('Client moved');
     });
   });
 
+  socket.on('eventMedia', (data) => {
+    // update clients
+    switch(data.type) {
+      case 'camera':
+        clients[data.activator].media[data.type] = data.state;
+        chatToggleStream(data.activator, data.state);
+        break;
+      case 'microphone':
+        clients[data.activator].media[data.type] = data.state;
+        break;
+      case 'monitor':
+        clients[data.activator].media[data.type][data.target] = data.state;
+        if(data.activator === socket.id) {
+          if(data.target === socket.id) {
+            chatToggleStreamAll(data.state);
+          } else {
+            chatToggleStream(data.target, data.state);
+          }
+        }
+        break;
+      case 'speaker':
+        clients[data.activator].media[data.type][data.target] = data.state;
+        break;
+      default:
+        break;
+    }
+    // update DOM
+    clientToggleMedia(data);
+  });
+
   socket.on('eventDisconnect', (data) => {
+    wrtc.closeConnection(data.id);
     clientDisconnect(data.id, () => {
+      // update clients
+      delete clients[data.id];
       console.log('Client disconnected');
     });
   });
@@ -169,6 +169,8 @@ window.addEventListener('load', () => {
       console.log('Disconnected');
     });
   });
+
+
 
   /********COMMANDS********/
 
@@ -192,24 +194,85 @@ window.addEventListener('load', () => {
     // clear input
     elemInput.value = '';
     // send message
-    socket.emit('cmdMessage', {message: message});
-    //webrtc
-    Object.entries(clients).forEach(([key, value]) => {
-      if(key != socket.id && value.room == clients[socket.id].room) {
-        wrtc.sendMessage(key, clients[socket.id].room, message);
+    Object.keys(clients).forEach((key) => {
+      if(key != socket.id) {
+        if(clients[key].room == clients[socket.id].room) {
+          wrtc.sendMessage(key, clients[socket.id].room, message);
+        }
       }
+    });
+    // show sent messages
+    clientMessage(socket.id, clients[socket.id].room, message, () => {
+      console.log('Client message');
     });
   }
 
-/*
-  function cmdToggleMicrophone(e) {
-    //
-  }
-*/
-
   function cmdToggleCamera(e) {
-    //
+    let id = this.id.replace(/\w*-\w*-/, '');
+    if(id != socket.id) {
+      // client can't toggle others camera
+      return;
+    }
+    let state = wrtc.toggleStream('video');
+    if(state != undefined) {
+      socket.emit('cmdMedia', {target: id, type: 'camera', state: state});
+    }
   }
+
+  function cmdToggleMonitor(e) {
+    let id = this.id.replace(/\w*-\w*-/, '');
+    if(id == socket.id) {
+      // toggle all exept already muted
+      let state = !clients[socket.id].media.monitor[socket.id];
+      Object.keys(clients).forEach((key) => {
+        if(key != socket.id) {
+          if(clients[socket.id].media.monitor[key]) {
+            wrtc.toggleMedia('video', key);
+          }
+        }
+      });
+      socket.emit('cmdMedia', {target: id, type: 'monitor', state: state});
+    } else {
+      // toggle client
+      let state = wrtc.toggleMedia('video', id);
+      socket.emit('cmdMedia', {target: id, type: 'monitor', state: state});
+    }
+  }
+
+  function cmdToggleMicrophone(e) {
+    let id = this.id.replace(/\w*-\w*-/, '');
+    if(id != socket.id) {
+      // client can't toggle others microphone
+      return;
+    }
+    let state = wrtc.toggleStream('audio');
+    console.log(state);
+    if(state != undefined) {
+      socket.emit('cmdMedia', {target: id, type: 'microphone', state: state});
+    }
+  }
+
+  function cmdToggleSpeaker(e) {
+    let id = this.id.replace(/\w*-\w*-/, '');
+    if(id == socket.id) {
+      // toggle all exept already muted
+      let state = !clients[socket.id].media.speaker[socket.id];
+      Object.keys(clients).forEach((key) => {
+        if(key != socket.id) {
+          if(clients[socket.id].media.speaker[key]) {
+            wrtc.toggleMedia('audio', key);
+          }
+        }
+      });
+      socket.emit('cmdMedia', {target: id, type: 'speaker', state: state});
+    } else {
+      // toggle client
+      let state = wrtc.toggleMedia('audio', id);
+      socket.emit('cmdMedia', {target: id, type: 'speaker', state: state});
+    }
+  }
+
+
 
   /********DOM********/
 
@@ -219,18 +282,17 @@ window.addEventListener('load', () => {
         // room container element
         let elemRoom = document.createElement('div');
         elemRoom.setAttribute('id', "room-"+room.name);
-        elemRoom.setAttribute('class', "room");
         // room title element
         let elemRoomTitle;
         // room type
         if(room.access == 'DENY') {
           // division
-          elemRoom.setAttribute('style', "text-align: center;");
+          elemRoom.setAttribute('class', "division");
           elemRoomTitle = document.createElement("h"+iteration);
           elemRoomTitle.innerText = room.name;
         } else {
           // room
-          elemRoom.setAttribute('style', "text-align: left;");
+          elemRoom.setAttribute('class', "room");
           elemRoomTitle = document.createElement("button");
           let elemRoomTitleText = document.createElement("h"+iteration);
           elemRoomTitleText.innerText = room.name;
@@ -292,81 +354,102 @@ window.addEventListener('load', () => {
       elemClientUsername.appendChild(elemClientName);
     }
     elemClient.appendChild(elemClientUsername);
-    // client microphone and speaker elements
-    let elemClientCamera;
-    let elemClientMicrophone;
-    let elemClientSpeaker;
+    // client media elements
+    let resource = "";
+    // camera
+    let elemClientCamera = document.createElement('button');
+    elemClientCamera.setAttribute('id', "client-camera-"+id);
+    let elemClientCameraImg = document.createElement('img');
+    resource = clients[id].media['camera'] ? "../public/media/camera_on.svg" : "../public/media/camera_off.svg";
+    elemClientCameraImg.setAttribute('src', resource);
+    elemClientCameraImg.setAttribute('alt', "camera");
+    elemClientCameraImg.setAttribute('width', "20");
+    elemClientCameraImg.setAttribute('height', "20");
+    elemClientCamera.appendChild(elemClientCameraImg);
+    // monitor
+    let elemClientMonitor = document.createElement('button');
+    elemClientMonitor.setAttribute('id', "client-monitor-"+id);
+    let elemClientMonitorImg = document.createElement('img');
+    resource = clients[id].media['monitor'][id] ? "../public/media/monitor_on.svg" : "../public/media/monitor_off.svg";
+    elemClientMonitorImg.setAttribute('src', resource);
+    elemClientMonitorImg.setAttribute('alt', "camera");
+    elemClientMonitorImg.setAttribute('width', "20");
+    elemClientMonitorImg.setAttribute('height', "20");
+    elemClientMonitor.appendChild(elemClientMonitorImg);
+    // video
+    let elemClientVideo = document.createElement('div');
+    elemClientVideo.setAttribute('id', "client-video-"+id);
+    elemClientVideo.setAttribute('class', "client-video");
+    let elemClientVideoMedia = document.createElement('video');
+    elemClientVideo.appendChild(elemClientVideoMedia);
+    // make ANON small and red
+    let elemClientVideoUsername = document.createElement('p');
+    elemClientVideoUsername.innerText = client.username;
+    elemClientVideo.appendChild(elemClientVideoUsername);
+    elemClientMonitor.appendChild(elemClientVideo);
+    // microphone
+    let elemClientMicrophone = document.createElement('button');
+    elemClientMicrophone.setAttribute('id', "client-microphone-"+id);
+    let elemClientMicrophoneImg = document.createElement('img');
+    resource = clients[id].media['microphone'] ? "../public/media/microphone_on.svg" : "../public/media/microphone_off.svg";
+    elemClientMicrophoneImg.setAttribute('src', resource);
+    elemClientMicrophoneImg.setAttribute('alt', "microphone");
+    elemClientMicrophoneImg.setAttribute('width', "20");
+    elemClientMicrophoneImg.setAttribute('height', "20");
+    elemClientMicrophone.appendChild(elemClientMicrophoneImg);
+    // speaker
+    let elemClientSpeaker = document.createElement('button');
+    elemClientSpeaker.setAttribute('id', "client-speaker-"+id);
+    let elemClientSpeakerImg = document.createElement('img');
+    resource = clients[id].media['speaker'][id] ? "../public/media/speaker_on.svg" : "../public/media/speaker_off.svg";
+    elemClientSpeakerImg.setAttribute('src', resource);
+    elemClientSpeakerImg.setAttribute('alt', "microphone");
+    elemClientSpeakerImg.setAttribute('width', "20");
+    elemClientSpeakerImg.setAttribute('height', "20");
+    elemClientSpeaker.appendChild(elemClientSpeakerImg);
     if(id == socket.id) {
-      // client camera element
-      elemClientCamera = document.createElement('button');
-      elemClientCamera.setAttribute('id', "client-camera");
-      elemClientCamera.setAttribute('class', "client-camera");
-      let elemClientCameraImg = document.createElement('img');
-      elemClientCameraImg.setAttribute('src', "../public/media/camera_off.svg");
-      elemClientCameraImg.setAttribute('alt', "camera");
-      elemClientCameraImg.setAttribute('width', "20");
-      elemClientCameraImg.setAttribute('height', "20");
-      elemClientCamera.appendChild(elemClientCameraImg);
-      elemClientCamera.addEventListener('click', cmdToggleCamera);
-      // client microphone element
-      elemClientMicrophone = document.createElement('button');
-      elemClientMicrophone.setAttribute('id', "client-microphone");
-      elemClientMicrophone.setAttribute('class', "client-microphone");
-      let elemClientMicrophoneImg = document.createElement('img');
-      elemClientMicrophoneImg.setAttribute('src', "../public/media/microphone_off.svg");
-      elemClientMicrophoneImg.setAttribute('alt', "microphone");
-      elemClientMicrophoneImg.setAttribute('width', "20");
-      elemClientMicrophoneImg.setAttribute('height', "20");
-      elemClientMicrophone.appendChild(elemClientMicrophoneImg);
-      elemClientMicrophone.addEventListener('click', cmdToggleMicrophone);
-      // client speaker element
-      elemClientSpeaker = document.createElement('button');
-      elemClientSpeaker.setAttribute('id', "client-speaker");
-      elemClientSpeaker.setAttribute('class', "client-speaker");
-      let elemClientSpeakerImg = document.createElement('img');
-      elemClientSpeakerImg.setAttribute('src', "../public/media/speaker_on.svg");
-      elemClientSpeakerImg.setAttribute('alt', "speaker");
-      elemClientSpeakerImg.setAttribute('width', "20");
-      elemClientSpeakerImg.setAttribute('height', "20");
-      elemClientSpeaker.appendChild(elemClientSpeakerImg);
+      // camera
+      elemClientCamera.setAttribute('class', "client-buttons");
+      elemClientCamera.addEventListener('click', cmdToggleCamera.bind(elemClientCamera));
+      // monitor
+      elemClientMonitor.setAttribute('class', "client-buttons");
+      elemClientMonitor.addEventListener('click', cmdToggleMonitor.bind(elemClientMonitor));
+      // video
+      wrtc.setMediaFeedback(id, 'video', elemClientVideoMedia);
+      // microphone
+      elemClientMicrophone.setAttribute('class', "client-buttons");
+      elemClientMicrophone.addEventListener('click', cmdToggleMicrophone.bind(elemClientMicrophone));
+      // speaker
+      elemClientSpeaker.setAttribute('class', "client-buttons");
+      elemClientSpeaker.addEventListener('click', cmdToggleSpeaker.bind(elemClientSpeaker));
     } else {
-      // client camera element
-      elemClientCamera = document.createElement('img');
-      elemClientCamera.setAttribute('class', "client-camera");
-      elemClientCamera.setAttribute('src', "../public/media/camera_off.svg");
-      elemClientCamera.setAttribute('alt', "camera");
-      elemClientCamera.setAttribute('width', "20");
-      elemClientCamera.setAttribute('height', "20");
-      // client microphone element
-      elemClientMicrophone = document.createElement('img');
-      elemClientMicrophone.setAttribute('class', "client-microphone");
-      elemClientMicrophone.setAttribute('src', "../public/media/microphone_off.svg");
-      elemClientMicrophone.setAttribute('alt', "microphone");
-      elemClientMicrophone.setAttribute('width', "20");
-      elemClientMicrophone.setAttribute('height', "20");
-      // client speaker element
-      elemClientSpeaker = document.createElement('img');
-      elemClientSpeaker.setAttribute('class', "client-speaker");
-      elemClientSpeaker.setAttribute('src', "../public/media/speaker_on.svg");
-      elemClientSpeaker.setAttribute('alt', "speaker");
-      elemClientSpeaker.setAttribute('width', "20");
-      elemClientSpeaker.setAttribute('height', "20");
-      // audio output
+      // camera
+      elemClientCamera.setAttribute('class', "client-icons");
+      // monitor
+      elemClientMonitor.setAttribute('class', "client-buttons");
+      elemClientMonitor.addEventListener('click', cmdToggleMonitor.bind(elemClientMonitor));
+      // video
+      wrtc.setMediaElement(id, 'video', elemClientVideoMedia);
+      // microphone
+      elemClientMicrophone.setAttribute('class', "client-icons");
+      // speaker
+      elemClientSpeaker.setAttribute('class', "client-buttons");
+      elemClientSpeaker.addEventListener('click', cmdToggleSpeaker.bind(elemClientSpeaker));
+      // audio
       let elemClientAudio = document.createElement('audio');
+      elemClientAudio.setAttribute('id', "client-audio-"+id);
       elemClientAudio.setAttribute('class', "client-audio");
-      elemClientAudio.setAttribute('style', "display: none;");
-      client.receptor = new Receptor('audio/webm;codecs=opus', elemClientAudio);
-      elemClient.appendChild(elemClientAudio);
+      wrtc.setMediaElement(id, 'audio', elemClientAudio);
+      elemClientSpeaker.appendChild(elemClientAudio);
     }
     elemClient.appendChild(elemClientCamera);
+    elemClient.appendChild(elemClientMonitor);
     elemClient.appendChild(elemClientMicrophone);
     elemClient.appendChild(elemClientSpeaker);
     return done(elemClient);
   }
 
   function clientConnect(id, client, done) {
-    // update clients
-    clients[id] = client;
     // if client is in a room
     if(client.room) {
       createClientElem(id, clients[id], (elemClient) => {
@@ -404,7 +487,7 @@ window.addEventListener('load', () => {
     }
   }
 
-  function clientMessage(id, message, done) {
+  function clientMessage(id, channel, message, done) {
     // get the time the message was received
     let time = new Date();
     // create the message div element
@@ -418,7 +501,7 @@ window.addEventListener('load', () => {
     // create the message time element
     let elemMessageTime = document.createElement("p");
     elemMessageTime.setAttribute('class', "message-time");
-    elemMessageTime.innerText = time.getHours()+':'+time.getMinutes()+':'+time.getSeconds();
+    elemMessageTime.innerText = padNumber(time.getHours())+':'+padNumber(time.getMinutes())+':'+padNumber(time.getSeconds());
     elemMessageDiv.appendChild(elemMessageTime);
     // create the message element
     let elemMessage = document.createElement("p");
@@ -430,16 +513,161 @@ window.addEventListener('load', () => {
     return done();
   }
 
+  function padNumber(number, digits=2) {
+  	if(Number(number) == NaN) {
+      return 'NaN';
+    }
+    const num = Number(number);
+    if(num >= 10**(digits-1)) {
+      return '' + num;
+    } else {
+      let str = '';
+      for(let i = 0; i < digits-num.toString().length; i++) {
+        str += 0;
+      }
+      str += num;
+      return str;
+    }
+  }
+
+  function clientToggleMedia(data) {
+    if(data.activator == socket.id) {
+      // reflect toggle state
+      clientToggleMediaOnOff(data.target, data.type, data.state);
+    } else {
+      switch(data.type) {
+        case 'camera':
+        case 'microphone':
+          // reflect toggle state
+          clientToggleMediaOnOff(data.activator, data.type, data.state);
+          break;
+        case 'monitor':
+        case 'speaker':
+          // reflect toggle state
+          clientToggleMediaOnCut(data.activator, data.type, data.state);
+          break;
+        default:
+          break;
+      }
+    }
+  }
+
+  function clientToggleMediaOnOff(id, type, state) {
+    // reflect toggle state
+    let elemImg = document.getElementById("client-"+type+"-"+id).getElementsByTagName('img')[0];
+    if(state) {
+      elemImg.src = elemImg.src.replace(/_[a-z]*.svg$/, '_on.svg');
+    } else {
+      elemImg.src = elemImg.src.replace(/_[a-z]*.svg$/, '_off.svg');
+    }
+  }
+
+  function clientToggleMediaOnCut(id, type, state) {
+    // reflect toggle state
+    let elemImg = document.getElementById("client-"+type+"-"+id).getElementsByTagName('img')[0];
+    if(elemImg.src.endsWith('_off.svg')) {
+      return;
+    }
+    if(state) {
+      elemImg.src = elemImg.src.replace(/_[a-z]*.svg$/, '_on.svg');
+    } else {
+      elemImg.src = elemImg.src.replace(/_[a-z]*.svg$/, '_cut.svg');
+    }
+  }
+
+  function chatToggleStreamAll(state) {
+    Object.entries(clients).forEach(([key, value]) => {
+      if(key != socket.id) {
+        if(clients[key].room === clients[socket.id].room) {
+          // for every user in the room
+          if(state) {
+            if(clients[key].media.camera) {
+              // if they have the camera on
+              if(clients[socket.id].media.monitor[key]) {
+                // if we don't have their video muted
+                chatToggleStream(key, state);
+              }
+            }
+          } else {
+            chatToggleStream(key, state);
+          }
+        }
+      }
+    });
+  }
+
+  function chatToggleStream(id, state) {
+    let elemStream = document.getElementById("client-video-"+id);
+    //.parentElement
+    if(state && elemStream.parentElement.parentElement.id === 'chatStream') {
+      // already enabled
+      return;
+    }
+    if(!state && elemStream.parentElement.parentElement.id != 'chatStream') {
+      // already disabled
+      return;
+    }
+    if(state && !clients[socket.id].media.monitor[id]) {
+      // monitor is disabled
+      return;
+    }
+    if(state && !clients[id].media.camera) {
+      // client camera is disabled
+      return;
+    }
+    // get streams count
+    let elemChatStreams = document.getElementById('chatStream').getElementsByTagName('div')[0];
+    let count = elemChatStreams.childElementCount;
+    count = state ? count+1 : count-1;
+    // calculate columns and rows
+    let columns, rows;
+    let num = Math.sqrt(count);
+    if(Number.isInteger(num)) {
+      columns = num;
+      rows = num;
+    } else {
+      let int = Math.floor(num);
+      let rest = num % 1;
+      if(rest < 0.5) {
+        columns = int + 1;
+        rows = int;
+      } else {
+        columns = int + 1;
+        rows = int + 1;
+      }
+    }
+    columns = columns>0 ? columns : 1;
+    rows = rows>0 ? rows : 1;
+    // are we adding or removing
+    if(state) {
+      // change style
+      elemChatStreams.style.gridTemplateColumns = "repeat("+columns+", 1fr)";
+      elemChatStreams.style.gridTemplateRows = "repeat("+rows+", 1fr)";
+      // add stream
+      elemChatStreams.appendChild(elemStream);
+      elemStream.setAttribute('class', "chat-video");
+    } else {
+      // remove stream
+      let elemClientMonitor = document.getElementById("client-monitor-"+id);
+      elemClientMonitor.appendChild(elemStream);
+      elemStream.setAttribute('class', "client-video");
+      // change style
+      elemChatStreams.style.gridTemplateColumns = "repeat("+columns+", 1fr)";
+      elemChatStreams.style.gridTemplateRows = "repeat("+rows+", 1fr)";
+    }
+  }
+
   function clientDisconnect(id, done) {
-    // get client element
-    let elemClient = document.getElementById('client-'+id);
-    // if element exists
+    // delete stream
+    let elemClientVideo = document.getElementById("client-video-"+id);
+    if(elemClientVideo) {
+      elemClientVideo.remove();
+    }
+    // delete client
+    let elemClient = document.getElementById("client-"+id);
     if(elemClient) {
-      // remove element
       elemClient.remove();
     }
-    // update clients
-    delete clients[id];
     return done();
   }
 

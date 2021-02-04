@@ -1,6 +1,7 @@
 const passport = require('passport');
 
 module.exports = function(app) {
+
   app.route('/connect')
     .get(function (req, res) {
       res.sendFile(process.cwd() + '/views/index.html');
@@ -35,10 +36,16 @@ module.exports = function(app) {
     .get(ensureAuth, function(req, res) {
       res.sendFile(process.cwd() + '/views/chat.html');
     });
+
+  app.route('/')
+    .get(ensureAuth, function(req, res) {
+      res.sendFile(process.cwd() + '/views/chat.html');
+    });
   
   app.use(function(req, res, next) {
     res.status(404)
       .type('text')
       .send('Not Found');
   });
+
 }

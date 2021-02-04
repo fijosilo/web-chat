@@ -16,14 +16,14 @@
     "dotenv": "*",
     "express": "*",
     "express-session": "*",
-    "helmet": "*",
-    "knex": "*",
+    "helmet": "^4.4.1",
+    "knex": "^0.21.17",
     "mariadb": "*",
     "mysql": "*",
     "passport": "*",
     "passport-local": "*",
     "passport.socketio": "*",
-    "socket.io": "^3.0.5",
+    "socket.io": "^3.1.0",
     "uuid": "*"
   }
 }

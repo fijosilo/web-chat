@@ -1,224 +1,265 @@
 
 class WRTC {
   
-  constructor(cbSendSignal, cbReceiveMessage, options={iceServers: [{urls: "stun:stun.1.google.com:19302"}]}) {
+  constructor(cbSendSignal, cbOnChannelMessage, iceservers, polite) {
     this._sendSignal = cbSendSignal;
-    this._receiveMessage = cbReceiveMessage;
-    this._options = options;
+    this._iceservers = iceservers;
+    this._polite = polite;
+    this._makingOffer = {};
+    this._ignoreOffer = {};
     this._connections = {};
     this._channels = {};
+    this._onChannelMessage = cbOnChannelMessage;
+    this._streams = {};
+    this._MediaStream = null;
+    this._MediaConstraints = null;
+    this._mediaElement = {};
   }
 
-  signal(data) {
-    switch(data.type) {
-      case 'candidate':
-        this._icecandidateFromPeer(data.activator, data.candidate);
-        break;
-      case 'offer':
-        this._offerFromPeer(data.activator, data.sdp);
-        break;
-      case 'answer':
-        this._answerFromPeer(data.activator, data.sdp);
-        break;
-      default:
-        break;
-    }
-  }
-
-  sendMessage(peer, channel, message) {
-    let ch = this._getChannel(peer, channel);
-    if(ch) {
-      // send message
-      ch.send(message);
-    } else {
-      // open channel
-      this.openChannel(peer, channel);
-    }
-  }
-
-  openChannel(peer, channel) {
-    if(!this._connections[peer]) {
-      // create connection
-      this._createConnection(peer, () => {
-        // create channel
-        this._createChannel(peer, channel, () => {
-          // start negotiations
-          this._offerToPeer(peer);
-        });
-      });
-    } else {
-      let ch = this._getChannel(peer, channel);
-      if(!ch) {
-        // create channel
-        this._createChannel(peer, channel);
-      }
-    }
-  }
-
-  _createChannel(peer, channel, done=null) {
-    // create channel
-    let ch = this._connections[peer].createDataChannel(channel);
-    this._channels[peer].push(ch);
-    // create channel event handlers
-    ch.onopen = () => {
-      console.log('webrtc channel open');
-    };
-    ch.onmessage = (e) => {
-      this._receiveMessage(peer, e.target.label, e.data);
-    };
-    ch.onclose = () => {
-      console.log('webrtc channel close');
-    };
-    // done
-    if(done) {return done();} else {return;}
-  }
-
-  _getChannel(peer, channel) {
-    if(this._channels[peer]) {
-      let channels = this._channels[peer].filter(value => value.label == channel);
-      if(channels.length > 0) {
-        return channels[0];
-      }
-    }
-    return null;
-  }
-
-  _createConnection(peer, done) {
+  createConnection(peer) {
     // create connection
-    this._connections[peer] = new RTCPeerConnection(this._options);
-    // create connection event handlers
+    this._connections[peer] = new RTCPeerConnection(this._iceservers);
+    // onnegotiationneeded
+    this._makingOffer[peer] = false;
+    this._connections[peer].onnegotiationneeded = (e) => {
+      this._makingOffer[peer] = true;
+      // set local description
+      this._connections[peer].setLocalDescription()
+      .then(() => {
+        // send offer
+        this._sendSignal({
+          sdp: this._connections[peer].localDescription,
+          target: peer
+        });
+        this._makingOffer[peer] = false;
+      })
+      .catch((err) => {
+        console.error(err);
+        this._makingOffer[peer] = false;
+      });
+    };
+    // onicecandidate
     this._connections[peer].onicecandidate = (e) => {
       if(e.candidate) {
-        // send ice candidate through the signaling server
+        // send ice candidate
         this._sendSignal({
           candidate: e.candidate,
-          type: 'candidate',
           target: peer
         });
       }
     };
-    this._channels[peer] = [];
+    // ondatachannel
+    this._channels[peer] = {};
     this._connections[peer].ondatachannel = (e) => {
       // create channel event handlers
-      this._channels[peer].push(e.channel);
-      e.channel.onopen = () => {
+      this._channels[peer][e.channel.label] = e.channel;
+      e.channel.onopen = (e) => {
         console.log('webrtc channel open');
       };
       e.channel.onmessage = (e) => {
-        this._receiveMessage(peer, e.target.label, e.data);
+        this._onChannelMessage(peer, e.target.label, e.data);
       };
-      e.channel.onclose = () => {
+      e.channel.onclose = (e) => {
         console.log('webrtc channel close');
+        delete this._channels[peer][e.target.label];
       };
     };
-    // done
-    return done();
+    // ontrack
+    this._streams[peer] = {};
+    this._mediaElement[peer] = {};
+    this._connections[peer].ontrack = (e) => {
+      // create stream from track
+      this._streams[peer][e.track.kind] = new MediaStream([e.track]);
+      // create media event handlers
+      this._mediaElement[peer][e.track.kind].onloadeddata = function(e) {e.target.play();};
+      // connect media to stream
+      this._mediaElement[peer][e.track.kind].srcObject = this._streams[peer][e.track.kind];
+    };
+    return;
   }
 
-  _offerToPeer(peer) {
-    // create offer
-    this._connections[peer].createOffer()
-    .then((offer) => {
-      // set local description
-      this._connections[peer].setLocalDescription(offer)
-      .then(() => {
-        // send offer through the signaling server
-        this._sendSignal({
-          sdp: offer,
-          type: 'offer',
-          target: peer
-        });
-      })
-      .catch((err) => {
-        console.error(err);
-      });
-    })
-    .catch((err) => {
-      console.error(err);
-    });
-  }
-
-  _offerFromPeer(peer, offer) {
-    // if connection not created
-    if(!this._connections[peer]) {
-      // create connection
-      this._createConnection(peer, () => {
-        // set remote description
-        this._connections[peer].setRemoteDescription(offer)
-        .then(() => {
-          //
-        })
-        .catch((err) => {
-          console.error(err);
-        });
-        // create answer
-        this._answerToPeer(peer);
-      });
-    } else {
+  receiveSignal(signal) {
+    if(signal.sdp) {
+      // is it an offer and does it collide with existing offer
+      const offerCollision = (signal.sdp.type == "offer") && 
+        (this._makingOffer[signal.activator] || this._connections[signal.activator].signalingState != "stable");
+      // if it collides and we are impolite ignore offer
+      this._ignoreOffer[signal.activator] = !this._polite[signal.activator] && offerCollision;
+      if(this._ignoreOffer[signal.activator]) {
+        return;
+      }
       // set remote description
-      this._connections[peer].setRemoteDescription(offer)
+      this._connections[signal.activator].setRemoteDescription(signal.sdp)
       .then(() => {
-        //
+        if(signal.sdp.type == "offer") {
+          // set local description
+          this._connections[signal.activator].setLocalDescription()
+          .then(() => {
+            // send answer
+            this._sendSignal({
+              sdp: this._connections[signal.activator].localDescription,
+              target: signal.activator
+            });
+          })
+          .catch((err) => {
+            console.error(err);
+          });
+        }
       })
       .catch((err) => {
         console.error(err);
       });
-      // create answer
-      this._answerToPeer(peer);
+    } else if(signal.candidate) {
+      // add ice candidate
+      this._connections[signal.activator].addIceCandidate(signal.candidate)
+      .then(() => {})
+      .catch((err) => {
+        if(!this._ignoreOffer[signal.activator]) {
+          console.error(err);
+        }
+      });
     }
   }
 
-  _answerToPeer(peer) {
-    // create answer
-    this._connections[peer].createAnswer()
-    .then((answer) => {
-      // set local description
-      this._connections[peer].setLocalDescription(answer)
-      .then(() => {
-        // send answer through the signaling server
-        this._sendSignal({
-          sdp: answer,
-          type: 'answer',
-          target: peer
-        });
+  closeConnection(peer) {
+    try {
+      // close streams
+      for(let sender of this._connections[peer].getSenders()) {
+        this._connections[peer].removeTrack(sender);
+      }
+      // close channels
+      Object.values(this._channels[peer]).forEach((channel) => {
+        channel.close();
+      });
+      // close connection
+      this._connections[peer].close();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      // reinitialize variables
+      delete this._streams[peer];
+      delete this._mediaElement[peer];
+      this._channels = {};
+      delete this._connections[peer];
+    }
+  }
+
+  createChannel(peer, channel) {
+    // is channel already created
+    if(this._channels[peer][channel]) {
+      return;
+    }
+    // create channel
+    this._channels[peer][channel] = this._connections[peer].createDataChannel(channel);
+    this._channels[peer][channel].onopen = (e) => {
+      console.log('webrtc channel open');
+    };
+    this._channels[peer][channel].onmessage = (e) => {
+      this._onChannelMessage(peer, e.target.label, e.data);
+    };
+    this._channels[peer][channel].onclose = (e) => {
+      console.log('webrtc channel close');
+      // delete the channel
+      delete this._channels[peer][e.target.label];
+    };
+  }
+
+  closeChannel(peer, channel) {
+    // close channel
+    this._channels[peer][channel].close();
+  }
+
+  sendMessage(peer, channel, message) {
+    // send message
+    this._channels[peer][channel].send(message);
+  }
+
+  createStream() {
+    // get media stream
+    this._MediaConstraints = {audio: true, video: {facingMode: "user"}};
+    window.navigator.mediaDevices.getUserMedia(this._MediaConstraints)
+    .then((stream) => {
+      this._MediaStream = stream;
+      for(let track of this._MediaStream.getTracks()) {
+        track.enabled = false;
+      }
+    })
+    .catch((err) => {
+      this._MediaConstraints = {audio: true, video: false};
+      window.navigator.mediaDevices.getUserMedia(this._MediaConstraints)
+      .then((stream) => {
+        this._MediaStream = stream;
+        for(let track of this._MediaStream.getTracks()) {
+          track.enabled = false;
+        }
       })
       .catch((err) => {
-        console.error(err);
+        this._MediaConstraints = {audio: false, video: false};
       });
-    })
-    .catch((err) => {
-      console.error(err);
     });
   }
 
-  _answerFromPeer(peer, answer) {
-    // set remote description
-    this._connections[peer].setRemoteDescription(answer)
-    .then(() => {
-      //
-    })
-    .catch((err) => {
-      console.error(err);
-    });
-  }
-
-  _icecandidateFromPeer(peer, candidate) {
-    // add ice candidate
-    console.log(candidate);
-    this._connections[peer].addIceCandidate(new RTCIceCandidate(candidate));
-  }
-
-  _destroyConnection(peer) {
-    // close tracks?
-    // close channels
-    for(let channel of this._channels[peer]) {
-      channel.close();
-      channel = undefined;
+  toggleStream(type) {
+    // mute/unmute stream audio/video
+    let state;
+    for(let track of this._MediaStream.getTracks()) {
+      if(track.kind == type) {
+        track.enabled = !track.enabled;
+        state = track.enabled;
+      }
     }
-    this._channels[peer] = undefined;
-    // close connection
-    this._connections[peer].close();
-    this._connections[peer] = undefined;
+    return state;
+  }
+
+  openStream(peer) {
+    // add tracks to connection
+    for(let track of this._MediaStream.getTracks()) {
+      this._connections[peer].addTrack(track);
+    }
+  }
+
+  closeStream(peer) {
+    // remove tracks from connection
+    for(let sender of this._connections[peer].getSenders()) {
+      this._connections[peer].removeTrack(sender);
+    }
+  }
+
+  setMediaElement(peer, type, elem) {
+    // set media element
+    this._mediaElement[peer][type] = elem;
+  }
+
+  setMediaFeedback(peer, type, elem) {
+    if(!this._MediaStream) {
+      return;
+    }
+    let tracks;
+    if(type = 'video') {
+      tracks = this._MediaStream.getVideoTracks();
+    } else if(type = 'audio') {
+      tracks = this._MediaStream.getAudioTracks();
+    } else {
+      tracks = this._MediaStream.getTracks();
+    }
+    if(!tracks) {
+      return;
+    }
+    // set media element
+    this._mediaElement[peer] = {};
+    this._mediaElement[peer][type] = elem;
+    // create stream from track
+    this._streams[peer] = {};
+    this._streams[peer][type] = new MediaStream(tracks);
+    // create media event handlers
+    this._mediaElement[peer][type].onloadeddata = function(e) {e.target.play();};
+    // connect media to stream
+    this._mediaElement[peer][type].srcObject = this._streams[peer][type];
+  }
+
+  toggleMedia(type, peer) {
+    this._mediaElement[peer][type].muted = !this._mediaElement[peer][type].muted;
+    return !this._mediaElement[peer][type].muted;
   }
 
 }

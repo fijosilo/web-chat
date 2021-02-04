@@ -35,7 +35,6 @@ const sockets = require('./components/sockets.js');
 
 // SETUP
 // security settings
-/*
 app.disable('x-powered-by');
 app.use(helmet({
   frameguard: {
@@ -46,16 +45,15 @@ app.use(helmet({
   },
   contentSecurityPolicy: {
     directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc:["'self'"],
-      styleSrc:["'self'"]
+      'defaultSrc': ["'self'"],
+      'scriptSrc': ["'self'"],
+      'styleSrc': ["'self'"],
     }
   }
 }));
-*/
 // css and javascript folder
 app.use('/public', express.static(process.cwd() + '/public'));
-// process json and string/array requests and store them in req.body
+// process json and url encoded requests and store them in req.body
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 // passport
