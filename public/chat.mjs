@@ -1,5 +1,6 @@
 const socket = io();
 import WRTC from './WRTC.mjs';
+import BBCode from './BBCode.mjs';
 
 
 // TODO: put usernames on their streams
@@ -10,14 +11,135 @@ import WRTC from './WRTC.mjs';
 window.addEventListener('load', () => {
   /********VARIABLES********/
   console.log('WINDOW LOAD');
+  // window.devicePixelRatio > 1.5 = small screen else big screen  
+  console.log(window.devicePixelRatio);
 
   let clients;
   let rooms;
 
+  let bbcode = new BBCode();
+
   document.getElementById('chatInput').addEventListener('submit', cmdMessage, true);
 
-  let tree = document.getElementById('tree').getElementsByTagName('div')[0];
+  let tree;
   let chatOutput = document.getElementById('chatOutput').getElementsByTagName('div')[0];
+  let BBCodeTest = `
+  [b]This text is bold[/b]
+  [i]This text is italic[/i]
+  [u]This text is underline[/u]
+  [s]This text is strikethrough[/s]
+  [size=22]This text is 22pt[/size]
+  [style size=22]This text is also 22pt[/style]
+  [color=red]This text is red[/color]
+  [style color=red]This text is also red[/style]
+  [center]This text is aligned to center[/center]
+  [left]This text is aligned to left[/left]
+  [right]This text is aligned to right[/right]
+  
+  [quote]A review is an evaluation of a publication, service, or company.[/quote]
+  [quote=Sonic the edgedog]A review is an evaluation of a [i]publication[/i], service, or company such as a movie (a movie review), video game (video game review), musical composition (music review of a composition or recording), book (book review); a piece of hardware like a car, home appliance, or computer; or an event or performance, such as a live music concert, play, musical theater show, dance show, or art exhibition. some more text just to test something blabla bla yo ye io it's me marioo[/quote]
+  
+  [spoiler]The hero dies at the end[/spoiler]
+  [spoiler=What happens to Mario?]He saves the [color=orange]pricess[/color][/spoiler]
+  
+  [b][url]https://duckduckgo.com/[/url][/b]
+  [b][url=https://duckduckgo.com/]DuckDuckGo[/url][/b]
+  
+  [img]https://wallpapersdsc.net/wp-content/uploads/2016/09/Cape-Town-Images.jpeg[/img]
+  [img width=500px]https://wallpapersdsc.net/wp-content/uploads/2016/09/Cape-Town-Images.jpeg[/img]
+  
+  [center]
+  [img]https://external-content.duckduckgo.com/iu/?u=https%3A%2F%2Fwww.muqt.net%2Fimages%2Fshop%2Fdesc%2F83c204c5bbd7cb8f00285d2a0b9dc109-4_1b1a39b2337dd5d086ba89a0098bf073_583x585.jpg&f=1&nofb=1[/img]
+  [/center]
+
+  [ol]
+  Ordered list:
+  [li]Item one[/li]
+  [li]Item two[/li]
+  [/ol]
+  [ul]
+  Unordered list:
+  [li]Item one[/li]
+  [li]Item two[/li]
+  [/ul]
+  [list]
+  Another variant:
+  [li]Item one[/li]
+  [li]Item two[/li]
+  [/list]
+  
+  [code]
+let a = 2;
+  let b = 3;
+    console.log(a+b);
+  [/code]
+  [code=js]
+let a = 2;
+  let b = 3;
+    console.log(a+b);
+  [/code]
+  
+  [pre]
+      This    text is preformated.
+    it keeps the spaces       .
+asdasdasdas
+  [/pre]
+  
+  [table]
+  [tr]
+  [th]Name[/th]
+  [th]Age[/th]
+  [th]Hobby[/th]
+  [/tr]
+  [tr]
+  [td]John[/td]
+  [td]65[/td]
+  [td]books[/td]
+  [/tr]
+  [tr]
+  [td]Gitte[/td]
+  [td]40[/td]
+  [td]games[/td]
+  [/tr]
+  [tr]
+  [td]Sussie[/td]
+  [td]19[/td]
+  [td]music[/td]
+  [/tr]
+  [tr]
+  [td]John[/td]
+  [td]65[/td]
+  [td]books[/td]
+  [/tr]
+  [tr]
+  [td]Gitte[/td]
+  [td]40[/td]
+  [td]games[/td]
+  [/tr]
+  [tr]
+  [td]Sussie[/td]
+  [td]19[/td]
+  [td]music[/td]
+  [/tr]
+  [/table]
+
+  [youtube]LXb3EKWsInQ[/youtube]
+  `;
+  chatOutput.innerHTML = bbcode.parse(BBCodeTest);
+  let spoilers = chatOutput.getElementsByClassName('bb-spoiler');
+  for(const spoiler of spoilers) {
+    spoiler.getElementsByTagName('a')[0].addEventListener('click', toggleSpoiler.bind(spoiler));;
+  }
+
+  function toggleSpoiler(e) {
+    e.preventDefault();
+    const spoiler = this.getElementsByTagName('div')[0];
+    if(spoiler.style.display != 'initial') {
+      spoiler.style.display = 'initial';
+    } else {
+      spoiler.style.display = 'none';
+    }
+  }
 
   /********WEBRTC********/
   let wrtc;
@@ -52,7 +174,7 @@ window.addEventListener('load', () => {
     });
     console.log('Loading rooms...');
     rooms = data.rooms;
-    loadRooms(rooms, tree, () => {
+    loadRooms(() => {
       console.log('Loading clients...');
       clients = data.clients;
       loadClients(clients, () => {
@@ -118,6 +240,8 @@ window.addEventListener('load', () => {
                 }
               }
             });
+            // show room description
+            roomDescription(data.room);
           }
         }
       }
@@ -276,36 +400,57 @@ window.addEventListener('load', () => {
 
   /********DOM********/
 
-  function loadRooms(arrRooms, elemRoot, done=null, iteration=3) {
-    if(iteration < 7) {
-      for(const room of arrRooms) {
-        // room container element
-        let elemRoom = document.createElement('div');
-        elemRoom.setAttribute('id', "room-"+room.name);
-        // room title element
-        let elemRoomTitle;
-        // room type
-        if(room.access == 'DENY') {
-          // division
-          elemRoom.setAttribute('class', "division");
-          elemRoomTitle = document.createElement("h"+iteration);
-          elemRoomTitle.innerText = room.name;
-        } else {
-          // room
-          elemRoom.setAttribute('class', "room");
-          elemRoomTitle = document.createElement("button");
-          let elemRoomTitleText = document.createElement("h"+iteration);
-          elemRoomTitleText.innerText = room.name;
-          elemRoomTitle.appendChild(elemRoomTitleText);
-          elemRoomTitle.addEventListener('click', cmdMove);
-        }
-        elemRoom.appendChild(elemRoomTitle);
-        // update DOM
-        elemRoot.appendChild(elemRoom);
-        loadRooms(room.rooms, elemRoom, done, iteration+1);
+  function loadRooms(done=null) {
+    tree = document.createElement("div");
+    tree.setAttribute('id', "room-1");
+    document.getElementById('tree').appendChild(tree);
+    for(const room of rooms) {
+      // room container
+      let elemRoom = document.createElement('div');
+      elemRoom.setAttribute('id', "room-"+room.id);
+      // room iteration
+      let it = 3;
+      let root = room.parent_id;
+      while(root != 1) {
+        let r = rooms.find((value) => {
+          return value.id === root;
+        });
+        root = r.parent_id;
+        it++;
+      }
+      if(it > 6) {
+        console.error('Room iteration '+it+' is invalid.');
+        continue;
+      }
+      // room title
+      let elemRoomTitle;
+      if(room.division) {
+        elemRoom.setAttribute('class', "division");
+        elemRoomTitle = document.createElement("h"+it);
+        elemRoomTitle.innerText = room.name;
+      } else {
+        elemRoom.setAttribute('class', "room");
+        elemRoomTitle = document.createElement("button");
+        let elemRoomTitleText = document.createElement("h"+it);
+        elemRoomTitleText.innerText = room.name;
+        elemRoomTitle.appendChild(elemRoomTitleText);
+        elemRoomTitle.addEventListener('click', cmdMove);
+      }
+      elemRoom.appendChild(elemRoomTitle);
+      // update DOM
+      if(room.sibling_id != 0) {
+        // append after sibling
+        let elemParent = document.getElementById("room-"+room.parent_id);
+        let elemSibling = document.getElementById("room-"+room.sibling_id);
+        elemParent.insertBefore(elemRoom, elemSibling.nextSibling);
+      } else {
+        // append in alphabetic order(data is already in order just need to append)
+        let elemParent = document.getElementById("room-"+room.parent_id);
+        elemParent.appendChild(elemRoom);
       }
     }
-    if(iteration == 3 && done) {
+    // callback
+    if(done) {
       done();
     }
     return;
@@ -506,7 +651,7 @@ window.addEventListener('load', () => {
     // create the message element
     let elemMessage = document.createElement("p");
     elemMessage.setAttribute('class', "message-message");
-    elemMessage.innerText = message;
+    elemMessage.innerHTML = bbcode.parse(message);
     elemMessageDiv.appendChild(elemMessage);
     // update DOM
     chatOutput.appendChild(elemMessageDiv);
@@ -657,6 +802,21 @@ window.addEventListener('load', () => {
     }
   }
 
+  function roomDescription(id) {
+    // remove old description
+    const elemInfo = document.getElementById("info");
+    while (elemInfo.firstChild) {
+      elemInfo.firstChild.remove();
+    }
+    // set new description
+    let elemDescription = document.createElement("div");
+    let room = rooms.find((value) => {
+      return value.id == id;
+    });
+    elemDescription.innerHTML = bbcode.parse(room.description + "[youtube]9vdpNoarFJU[/youtube]");
+    elemInfo.appendChild(elemDescription);
+  }
+
   function clientDisconnect(id, done) {
     // delete stream
     let elemClientVideo = document.getElementById("client-video-"+id);
@@ -676,10 +836,6 @@ window.addEventListener('load', () => {
     console.log('DISCONNECTED');
     // remove the entire div instead of iterating all childs
     tree.remove();
-    // now just create a new div and append it back
-    document.getElementById('tree').appendChild(document.createElement("div"));
-    // and reasign our variable to this new div
-    tree = document.getElementById('tree').getElementsByTagName('div')[0];
     return done();
   }
   

@@ -47,7 +47,9 @@ app.use(helmet({
     directives: {
       'defaultSrc': ["'self'"],
       'scriptSrc': ["'self'"],
-      'styleSrc': ["'self'"],
+      'styleSrc': ["'self'", "'unsafe-inline'"],
+      'img-src': ["*"],
+      'frame-src': ["*"]
     }
   }
 }));

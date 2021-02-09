@@ -1,8 +1,8 @@
 require('dotenv').config();
-const fs = require('fs');
+const Database = require('../components/database.js');
+const db = new Database();
 
-module.exports = function(io) {
-
+module.exports = async function(io) {
   let iceservers = {
     iceServers: [
       {
@@ -18,7 +18,16 @@ module.exports = function(io) {
     ]
   };
 
-  let rooms = [
+  let rooms;
+  await db.loadRooms()
+  .then((res) => {
+    rooms = res;
+  })
+  .catch((err) => {
+    console.error(err);
+  });
+
+  let rooms2 = [
     {
       name: 'Lobby',
       description: '',
