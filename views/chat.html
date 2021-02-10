@@ -1,36 +1,13 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title>Web Chat</title>
+    <title>webchat</title>
     <meta charset="utf-8" />
     <link rel="stylesheet" href="../public/chat.css" type="text/css" />
     <script src="/socket.io/socket.io.js"></script>
   </head>
   <body>
-    <header></header>
-    <main>
-      <section id="tree">
-      </section>
-      <section id="chat">
-        <div id="chatStream">
-          <div></div>
-        </div>
-        <div id="chatOutput">
-          <div></div>
-        </div>
-        <div id="chatInput">
-          <form>
-            <!-- <label for="chatInputMessage">Message</label> -->
-            <input id="chatInputMessage" type="text" placeholder="Enter Message..." autocomplete="off" required>
-            <input id="chatInputSend" type="submit" value="SEND">
-          </form>
-        </div>
-      </section>
-      <section id="info">
-        <div></div>
-      </section>
-    </main>
-    <footer></footer>
+    <main id="page"></main>
   </body>
   <script src="../public/chat.mjs" type="module"></script>
 </html>

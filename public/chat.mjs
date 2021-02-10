@@ -3,158 +3,128 @@ import WRTC from './WRTC.mjs';
 import BBCode from './BBCode.mjs';
 
 
-// TODO: put usernames on their streams
-// fix bugs
-// on server disconnect need to close all p2p comunications
+
+function getRandomColor() {
+  var letters = '0123456789ABCDEF';
+  var color = '#';
+  for (var i = 0; i < 6; i++) {
+    color += letters[Math.floor(Math.random() * 16)];
+  }
+  return color;
+}
 
 
-window.addEventListener('load', () => {
-  /********VARIABLES********/
-  console.log('WINDOW LOAD');
-  // window.devicePixelRatio > 1.5 = small screen else big screen  
-  console.log(window.devicePixelRatio);
 
-  let clients;
-  let rooms;
+let bbcode = new BBCode();
+let clients;
+let rooms;
+let wrtc;
 
-  let bbcode = new BBCode();
 
-  document.getElementById('chatInput').addEventListener('submit', cmdMessage, true);
 
-  let tree;
-  let chatOutput = document.getElementById('chatOutput').getElementsByTagName('div')[0];
-  let BBCodeTest = `
-  [b]This text is bold[/b]
-  [i]This text is italic[/i]
-  [u]This text is underline[/u]
-  [s]This text is strikethrough[/s]
-  [size=22]This text is 22pt[/size]
-  [style size=22]This text is also 22pt[/style]
-  [color=red]This text is red[/color]
-  [style color=red]This text is also red[/style]
-  [center]This text is aligned to center[/center]
-  [left]This text is aligned to left[/left]
-  [right]This text is aligned to right[/right]
-  
-  [quote]A review is an evaluation of a publication, service, or company.[/quote]
-  [quote=Sonic the edgedog]A review is an evaluation of a [i]publication[/i], service, or company such as a movie (a movie review), video game (video game review), musical composition (music review of a composition or recording), book (book review); a piece of hardware like a car, home appliance, or computer; or an event or performance, such as a live music concert, play, musical theater show, dance show, or art exhibition. some more text just to test something blabla bla yo ye io it's me marioo[/quote]
-  
-  [spoiler]The hero dies at the end[/spoiler]
-  [spoiler=What happens to Mario?]He saves the [color=orange]pricess[/color][/spoiler]
-  
-  [b][url]https://duckduckgo.com/[/url][/b]
-  [b][url=https://duckduckgo.com/]DuckDuckGo[/url][/b]
-  
-  [img]https://wallpapersdsc.net/wp-content/uploads/2016/09/Cape-Town-Images.jpeg[/img]
-  [img width=500px]https://wallpapersdsc.net/wp-content/uploads/2016/09/Cape-Town-Images.jpeg[/img]
-  
-  [center]
-  [img]https://external-content.duckduckgo.com/iu/?u=https%3A%2F%2Fwww.muqt.net%2Fimages%2Fshop%2Fdesc%2F83c204c5bbd7cb8f00285d2a0b9dc109-4_1b1a39b2337dd5d086ba89a0098bf073_583x585.jpg&f=1&nofb=1[/img]
-  [/center]
+window.addEventListener('DOMContentLoaded', (event) => {
 
-  [ol]
-  Ordered list:
-  [li]Item one[/li]
-  [li]Item two[/li]
-  [/ol]
-  [ul]
-  Unordered list:
-  [li]Item one[/li]
-  [li]Item two[/li]
-  [/ul]
-  [list]
-  Another variant:
-  [li]Item one[/li]
-  [li]Item two[/li]
-  [/list]
-  
-  [code]
-let a = 2;
-  let b = 3;
-    console.log(a+b);
-  [/code]
-  [code=js]
-let a = 2;
-  let b = 3;
-    console.log(a+b);
-  [/code]
-  
-  [pre]
-      This    text is preformated.
-    it keeps the spaces       .
-asdasdasdas
-  [/pre]
-  
-  [table]
-  [tr]
-  [th]Name[/th]
-  [th]Age[/th]
-  [th]Hobby[/th]
-  [/tr]
-  [tr]
-  [td]John[/td]
-  [td]65[/td]
-  [td]books[/td]
-  [/tr]
-  [tr]
-  [td]Gitte[/td]
-  [td]40[/td]
-  [td]games[/td]
-  [/tr]
-  [tr]
-  [td]Sussie[/td]
-  [td]19[/td]
-  [td]music[/td]
-  [/tr]
-  [tr]
-  [td]John[/td]
-  [td]65[/td]
-  [td]books[/td]
-  [/tr]
-  [tr]
-  [td]Gitte[/td]
-  [td]40[/td]
-  [td]games[/td]
-  [/tr]
-  [tr]
-  [td]Sussie[/td]
-  [td]19[/td]
-  [td]music[/td]
-  [/tr]
-  [/table]
+  /********HTML********/
 
-  [youtube]LXb3EKWsInQ[/youtube]
-  `;
-  chatOutput.innerHTML = bbcode.parse(BBCodeTest);
-  let spoilers = chatOutput.getElementsByClassName('bb-spoiler');
-  for(const spoiler of spoilers) {
-    spoiler.getElementsByTagName('a')[0].addEventListener('click', toggleSpoiler.bind(spoiler));;
+  // default for small screen
+  let columns = 1;
+  let rows = 1;
+  if(window.devicePixelRatio < 1.5) {
+    // big screen
+    columns = 2;
+  }
+  // page layout
+  let elemPage = document.getElementById("page");
+  elemPage.style.gridTemplateColumns = "repeat("+columns+", 1fr)";
+  elemPage.style.gridTemplateRows = "repeat("+rows+", 1fr)";
+  // view template
+  let elemViewTemplate = document.createElement("div");
+  elemViewTemplate.setAttribute('class', "view");
+  // template menu
+  let elemMenu = document.createElement("div");
+  elemMenu.setAttribute('class', "menu");
+  elemViewTemplate.appendChild(elemMenu);
+  // template menu buttons
+  let mode = ['tree', 'chat', 'stream', 'info'];
+  for(const m of mode) {
+    let elemMenuButton = document.createElement("button");
+    elemMenuButton.setAttribute('class', "menu-button");
+    elemMenuButton.innerText = m.toUpperCase();
+    elemMenu.appendChild(elemMenuButton);
+  }
+  // backstage area
+  let elemBackstage = document.createElement("div");
+  elemBackstage.style.display = 'none';
+  elemPage.appendChild(elemBackstage);
+  // tree
+  let elemTree = document.createElement("div");
+  elemTree.setAttribute('id', mode[0]);
+  elemTree.setAttribute('class', mode[0]);
+  elemBackstage.appendChild(elemTree);
+  // chat
+  let elemChat = document.createElement("div");
+  elemChat.setAttribute('id', mode[1]);
+  elemChat.setAttribute('class', mode[1]);
+  elemBackstage.appendChild(elemChat);
+  // chat output
+  let elemChatOutput = document.createElement("div");
+  elemChatOutput.setAttribute('id', "chat-output");
+  elemChat.appendChild(elemChatOutput);
+  // chat input
+  let elemChatInput = document.createElement("div");
+  elemChatInput.setAttribute('id', "chat-input");
+  elemChat.appendChild(elemChatInput);
+  let elemChatInputForm = document.createElement("form");
+  elemChatInput.appendChild(elemChatInputForm);
+  elemChatInputForm.addEventListener('submit', cmdMessage, true);
+  let elemChatInputFormMessage = document.createElement("input");
+  elemChatInputFormMessage.setAttribute('id', "chat-input-message");
+  elemChatInputFormMessage.setAttribute('type', "text");
+  elemChatInputFormMessage.setAttribute('placeholder', "Enter Message...");
+  elemChatInputFormMessage.setAttribute('autocomplete', "off");
+  elemChatInputFormMessage.setAttribute('required', "true");
+  elemChatInputForm.appendChild(elemChatInputFormMessage);
+  let elemChatInputFormSend = document.createElement("input");
+  elemChatInputFormSend.setAttribute('id', "chat-input-send");
+  elemChatInputFormSend.setAttribute('type', "submit");
+  elemChatInputFormSend.setAttribute('value', "SEND");
+  elemChatInputForm.appendChild(elemChatInputFormSend);
+  // stream
+  let elemStream = document.createElement("div");
+  elemStream.setAttribute('id', mode[2]);
+  elemStream.setAttribute('class', mode[2]);
+  elemBackstage.appendChild(elemStream);
+  let elemStreamFrontend = document.createElement("div");
+  elemStreamFrontend.setAttribute('id', "stream-frontend");
+  elemStream.appendChild(elemStreamFrontend);
+  let elemStreamBackend = document.createElement("div");
+  elemStreamBackend.setAttribute('id', "stream-backend");
+  elemStreamBackend.style.display = 'none';
+  elemStream.appendChild(elemStreamBackend);
+  // info
+  let elemInfo = document.createElement("div");
+  elemInfo.setAttribute('id', mode[3]);
+  elemInfo.setAttribute('class', mode[3]);
+  elemBackstage.appendChild(elemInfo);
+  // fill every page grid item with a view
+  let gridItemCount = columns * rows;
+  for(let i = 0; i < gridItemCount; i++) {
+    // create view from template
+    let elemView = elemViewTemplate.cloneNode(true);
+    // view content
+    let elemContent = elemBackstage.getElementsByClassName(mode[i])[0];
+    elemView.appendChild(elemContent);
+    // add view to page grid
+    elemPage.appendChild(elemView);
+  }
+  // menu event listeners
+  let menuButtons = document.getElementsByClassName('menu-button');
+  for(const b of menuButtons) {
+    b.addEventListener('click', changeView);
   }
 
-  function toggleSpoiler(e) {
-    e.preventDefault();
-    const spoiler = this.getElementsByTagName('div')[0];
-    if(spoiler.style.display != 'initial') {
-      spoiler.style.display = 'initial';
-    } else {
-      spoiler.style.display = 'none';
-    }
-  }
-
-  /********WEBRTC********/
-  let wrtc;
-
-  function wrtcSendSignal(signal) {
-    socket.emit('wrtcSignal', signal);
-  }
-  socket.on('wrtcEventSignal', function(signal) {
-    wrtc.receiveSignal(signal);
-  });
-
-  function wrtcReceiveMessage(id, channel, message) {
-    clientMessage(id, channel, message, () => {
-      console.log('Client message');
-    });
+  function changeView(e) {
+    console.log(e.target);
   }
 
   /********SOCKETS********/
@@ -177,7 +147,7 @@ asdasdasdas
     loadRooms(() => {
       console.log('Loading clients...');
       clients = data.clients;
-      loadClients(clients, () => {
+      loadClients(() => {
         console.log('Loaded');
       });
     });
@@ -294,7 +264,20 @@ asdasdasdas
     });
   });
 
+  /********WEBRTC********/
 
+  function wrtcSendSignal(signal) {
+    socket.emit('wrtcSignal', signal);
+  }
+  socket.on('wrtcEventSignal', function(signal) {
+    wrtc.receiveSignal(signal);
+  });
+
+  function wrtcReceiveMessage(id, channel, message) {
+    clientMessage(id, channel, message, () => {
+      console.log('Client message');
+    });
+  }
 
   /********COMMANDS********/
 
@@ -312,7 +295,7 @@ asdasdasdas
 
   function cmdMessage(e) {
     e.preventDefault();
-    let elemInput = document.getElementById('chatInputMessage');
+    let elemInput = document.getElementById('chat-input-message');
     // get message
     let message = elemInput.value;
     // clear input
@@ -396,12 +379,10 @@ asdasdasdas
     }
   }
 
-
-
   /********DOM********/
 
   function loadRooms(done=null) {
-    tree = document.createElement("div");
+    let tree = document.createElement("div");
     tree.setAttribute('id', "room-1");
     document.getElementById('tree').appendChild(tree);
     for(const room of rooms) {
@@ -449,24 +430,20 @@ asdasdasdas
         elemParent.appendChild(elemRoom);
       }
     }
-    // callback
-    if(done) {
-      done();
-    }
-    return;
+    return done ? done() : done;
   }
 
-  function loadClients(objClients, done) {
-    Object.entries(objClients).forEach(([key, value]) => {
-      if(value.room) {
-        createClientElem(key, value, (elemClient) => {
+  function loadClients(done=null) {
+    Object.entries(clients).forEach(([id, client]) => {
+      if(client.room) {
+        createClientElem(id, client, (elemClient) => {
           // update DOM
-          let elemRoom = document.getElementById('room-'+value.room);
+          let elemRoom = document.getElementById('room-'+client.room);
           elemRoom.appendChild(elemClient);
         });
       }
     });
-    return done();
+    return done ? done() : done;
   }
 
   function createClientElem(id, client, done) {
@@ -521,17 +498,6 @@ asdasdasdas
     elemClientMonitorImg.setAttribute('width', "20");
     elemClientMonitorImg.setAttribute('height', "20");
     elemClientMonitor.appendChild(elemClientMonitorImg);
-    // video
-    let elemClientVideo = document.createElement('div');
-    elemClientVideo.setAttribute('id', "client-video-"+id);
-    elemClientVideo.setAttribute('class', "client-video");
-    let elemClientVideoMedia = document.createElement('video');
-    elemClientVideo.appendChild(elemClientVideoMedia);
-    // make ANON small and red
-    let elemClientVideoUsername = document.createElement('p');
-    elemClientVideoUsername.innerText = client.username;
-    elemClientVideo.appendChild(elemClientVideoUsername);
-    elemClientMonitor.appendChild(elemClientVideo);
     // microphone
     let elemClientMicrophone = document.createElement('button');
     elemClientMicrophone.setAttribute('id', "client-microphone-"+id);
@@ -552,6 +518,22 @@ asdasdasdas
     elemClientSpeakerImg.setAttribute('width', "20");
     elemClientSpeakerImg.setAttribute('height', "20");
     elemClientSpeaker.appendChild(elemClientSpeakerImg);
+    // video media
+    let elemClientMedia = document.createElement('div');
+    elemClientMedia.setAttribute('id', "media-"+id);
+    elemClientMedia.setAttribute('class', "media");
+    document.getElementById('stream-backend').appendChild(elemClientMedia);
+    let elemClientMediaVideo = document.createElement('video');
+    elemClientMediaVideo.setAttribute('id', "media-video-"+id);
+    elemClientMedia.appendChild(elemClientMediaVideo);
+    // video media username
+    let elemClientMediaUsername = document.createElement('p');
+    elemClientMediaUsername.innerText = client.username;
+    elemClientMedia.appendChild(elemClientMediaUsername);
+    // audio media
+    let elemClientMediaAudio = document.createElement('audio');
+    elemClientMediaAudio.setAttribute('id', "media-audio-"+id);
+    elemClientMedia.appendChild(elemClientMediaAudio);
     if(id == socket.id) {
       // camera
       elemClientCamera.setAttribute('class', "client-buttons");
@@ -560,7 +542,7 @@ asdasdasdas
       elemClientMonitor.setAttribute('class', "client-buttons");
       elemClientMonitor.addEventListener('click', cmdToggleMonitor.bind(elemClientMonitor));
       // video
-      wrtc.setMediaFeedback(id, 'video', elemClientVideoMedia);
+      wrtc.setMediaFeedback(id, 'video', elemClientMediaVideo);
       // microphone
       elemClientMicrophone.setAttribute('class', "client-buttons");
       elemClientMicrophone.addEventListener('click', cmdToggleMicrophone.bind(elemClientMicrophone));
@@ -574,18 +556,14 @@ asdasdasdas
       elemClientMonitor.setAttribute('class', "client-buttons");
       elemClientMonitor.addEventListener('click', cmdToggleMonitor.bind(elemClientMonitor));
       // video
-      wrtc.setMediaElement(id, 'video', elemClientVideoMedia);
+      wrtc.setMediaElement(id, 'video', elemClientMediaVideo);
       // microphone
       elemClientMicrophone.setAttribute('class', "client-icons");
       // speaker
       elemClientSpeaker.setAttribute('class', "client-buttons");
       elemClientSpeaker.addEventListener('click', cmdToggleSpeaker.bind(elemClientSpeaker));
       // audio
-      let elemClientAudio = document.createElement('audio');
-      elemClientAudio.setAttribute('id', "client-audio-"+id);
-      elemClientAudio.setAttribute('class', "client-audio");
-      wrtc.setMediaElement(id, 'audio', elemClientAudio);
-      elemClientSpeaker.appendChild(elemClientAudio);
+      wrtc.setMediaElement(id, 'audio', elemClientMediaAudio);
     }
     elemClient.appendChild(elemClientCamera);
     elemClient.appendChild(elemClientMonitor);
@@ -654,7 +632,8 @@ asdasdasdas
     elemMessage.innerHTML = bbcode.parse(message);
     elemMessageDiv.appendChild(elemMessage);
     // update DOM
-    chatOutput.appendChild(elemMessageDiv);
+    let elemChatOutput = document.getElementById("chat-output");
+    elemChatOutput.insertBefore(elemMessageDiv, elemChatOutput.childNodes[0]);
     return done();
   }
 
@@ -742,13 +721,12 @@ asdasdasdas
   }
 
   function chatToggleStream(id, state) {
-    let elemStream = document.getElementById("client-video-"+id);
-    //.parentElement
-    if(state && elemStream.parentElement.parentElement.id === 'chatStream') {
+    let elemMedia = document.getElementById("media-"+id);
+    if(state && elemMedia.parentElement.id != 'stream-backend') {
       // already enabled
       return;
     }
-    if(!state && elemStream.parentElement.parentElement.id != 'chatStream') {
+    if(!state && elemMedia.parentElement.id != 'stream-frontend') {
       // already disabled
       return;
     }
@@ -761,9 +739,10 @@ asdasdasdas
       return;
     }
     // get streams count
-    let elemChatStreams = document.getElementById('chatStream').getElementsByTagName('div')[0];
-    let count = elemChatStreams.childElementCount;
+    let elemStream = document.getElementById("stream-frontend");
+    let count = elemStream.childElementCount;
     count = state ? count+1 : count-1;
+    console.log(count);
     // calculate columns and rows
     let columns, rows;
     let num = Math.sqrt(count);
@@ -783,45 +762,59 @@ asdasdasdas
     }
     columns = columns>0 ? columns : 1;
     rows = rows>0 ? rows : 1;
+    console.log(columns);
+    console.log(rows);
     // are we adding or removing
     if(state) {
       // change style
-      elemChatStreams.style.gridTemplateColumns = "repeat("+columns+", 1fr)";
-      elemChatStreams.style.gridTemplateRows = "repeat("+rows+", 1fr)";
+      elemStream.style.gridTemplateColumns = "repeat("+columns+", 1fr)";
+      elemStream.style.gridTemplateRows = "repeat("+rows+", 1fr)";
       // add stream
-      elemChatStreams.appendChild(elemStream);
-      elemStream.setAttribute('class', "chat-video");
+      elemStream.appendChild(elemMedia);
     } else {
       // remove stream
-      let elemClientMonitor = document.getElementById("client-monitor-"+id);
-      elemClientMonitor.appendChild(elemStream);
-      elemStream.setAttribute('class', "client-video");
+      document.getElementById("stream-backend").appendChild(elemMedia);
       // change style
-      elemChatStreams.style.gridTemplateColumns = "repeat("+columns+", 1fr)";
-      elemChatStreams.style.gridTemplateRows = "repeat("+rows+", 1fr)";
+      elemStream.style.gridTemplateColumns = "repeat("+columns+", 1fr)";
+      elemStream.style.gridTemplateRows = "repeat("+rows+", 1fr)";
+    }
+  }
+
+  function toggleSpoiler(e) {
+    e.preventDefault();
+    const spoiler = this.getElementsByTagName('div')[0];
+    if(spoiler.style.display != 'initial') {
+      spoiler.style.display = 'initial';
+    } else {
+      spoiler.style.display = 'none';
     }
   }
 
   function roomDescription(id) {
+    // get current room description
+    let room = rooms.find((value) => {
+      return value.id == id;
+    });
+    // if room has no description
+    if(!room.description) {
+      return;
+    }
     // remove old description
     const elemInfo = document.getElementById("info");
     while (elemInfo.firstChild) {
       elemInfo.firstChild.remove();
     }
-    // set new description
+    // create new description
     let elemDescription = document.createElement("div");
-    let room = rooms.find((value) => {
-      return value.id == id;
-    });
-    elemDescription.innerHTML = bbcode.parse(room.description + "[youtube]9vdpNoarFJU[/youtube]");
+    elemDescription.innerHTML = bbcode.parse(room.description);
     elemInfo.appendChild(elemDescription);
   }
 
   function clientDisconnect(id, done) {
     // delete stream
-    let elemClientVideo = document.getElementById("client-video-"+id);
-    if(elemClientVideo) {
-      elemClientVideo.remove();
+    let elemClientMedia = document.getElementById("media-"+id);
+    if(elemClientMedia) {
+      elemClientMedia.remove();
     }
     // delete client
     let elemClient = document.getElementById("client-"+id);
@@ -835,8 +828,8 @@ asdasdasdas
     // clear sections
     console.log('DISCONNECTED');
     // remove the entire div instead of iterating all childs
-    tree.remove();
+    document.getElementById("room-1").remove();
     return done();
   }
-  
+
 });
