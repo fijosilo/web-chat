@@ -61,7 +61,9 @@ class WRTC {
       };
       e.channel.onclose = (e) => {
         console.log('webrtc channel close');
-        delete this._channels[peer][e.target.label];
+        if(this._channels[peer][e.target.label]) {
+          delete this._channels[peer][e.target.label];
+        }
       };
     };
     // ontrack

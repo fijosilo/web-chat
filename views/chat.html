@@ -7,7 +7,30 @@
     <script src="/socket.io/socket.io.js"></script>
   </head>
   <body>
-    <main id="page"></main>
+    <main>
+      <input id="tab-tree" type="radio" name="menu" />
+      <label for="tab-tree">TREE</label>
+      <input id="tab-chat" type="radio" name="menu" />
+      <label for="tab-chat">CHAT</label>
+      <input id="tab-stream" type="radio" name="menu" />
+      <label for="tab-stream">STREAM</label>
+      <input id="tab-info" type="radio" name="menu" />
+      <label for="tab-info">INFO</label>
+
+      <div id=tree></div>
+      <div id=chat>
+        <div id="chat-output"></div>
+        <form id="chat-input">
+          <textarea id="chat-input-message" form="chat-input" placeholder="Enter your message..." wrap="hard" spellcheck="false" required></textarea>
+          <input id="chat-input-send" type="submit" value="SEND">
+        </form>
+      </div>
+      <div id=stream>
+        <div id="stream-frontend"></div>
+        <div id="stream-backend"></div>
+      </div>
+      <div id=info></div>
+    </main>
   </body>
   <script src="../public/chat.mjs" type="module"></script>
 </html>

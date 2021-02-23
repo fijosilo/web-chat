@@ -40,6 +40,9 @@ app.use(helmet({
   frameguard: {
     action: 'SAMEORIGIN'
   },
+  permittedCrossDomainPolicies: {
+    permittedPolicies: 'all'
+  },
   referrerPolicy: {
     policy: 'same-origin'
   },
@@ -47,9 +50,12 @@ app.use(helmet({
     directives: {
       'defaultSrc': ["'self'"],
       'scriptSrc': ["'self'"],
-      'styleSrc': ["'self'", "'unsafe-inline'"],
-      'img-src': ["*"],
-      'frame-src': ["*"]
+      'styleSrc': ["'self'"],
+      'font-src': ["'self'"],
+      'frame-ancestors': ["*"],
+      'frame-src': ["*"],
+      'media-src': ["*"],
+      'img-src': ["*"]
     }
   }
 }));

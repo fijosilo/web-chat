@@ -27,65 +27,6 @@ module.exports = async function(io) {
     console.error(err);
   });
 
-  let rooms2 = [
-    {
-      name: 'Lobby',
-      description: '',
-      access: 'DENY',
-      rooms: [
-        {
-          name: 'Rules',
-          description: '',
-          access: 'ALLOW',
-          rooms: []
-        },
-        {
-          name: 'Welcome',
-          description: '',
-          access: 'ALLOW',
-          rooms: []
-        }
-      ]
-    },
-    {
-      name: 'Lounge',
-      description: '',
-      access: 'DENY',
-      rooms: [
-        {
-          name: 'Lounge ¹',
-          description: '',
-          access: 'ALLOW',
-          rooms: []
-        },
-        {
-          name: 'Lounge ²',
-          description: '',
-          access: 'ALLOW',
-          rooms: []
-        },
-        {
-          name: 'Lounge ³',
-          description: '',
-          access: 'ALLOW',
-          rooms: []
-        }
-      ]
-    },
-    {
-      name: 'Games',
-      description: '',
-      access: 'DENY',
-      rooms: []
-    },
-    {
-      name: 'Guests',
-      description: '',
-      access: 'DENY',
-      rooms: []
-    }
-  ]
-  
   let clients = {};
 
   let wrtcPolite = {};

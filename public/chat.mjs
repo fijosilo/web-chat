@@ -4,128 +4,30 @@ import BBCode from './BBCode.mjs';
 
 
 
-function getRandomColor() {
-  var letters = '0123456789ABCDEF';
-  var color = '#';
-  for (var i = 0; i < 6; i++) {
-    color += letters[Math.floor(Math.random() * 16)];
-  }
-  return color;
-}
-
-
-
 let bbcode = new BBCode();
 let clients;
 let rooms;
 let wrtc;
-
-
+let layout;
 
 window.addEventListener('DOMContentLoaded', (event) => {
-
-  /********HTML********/
-
-  // default for small screen
-  let columns = 1;
-  let rows = 1;
-  if(window.devicePixelRatio < 1.5) {
+  if(window.devicePixelRatio > 1.5 || window.innerWidth < 768) {
+    // small screen
+    layout = 'small';
+    document.getElementById('tab-tree').checked = true;
+  } else if( window.innerWidth >= 768 && window.innerWidth < 1280 ) {
+    // medium screen
+    layout = 'medium';
+    document.getElementById('tab-chat').checked = true;
+  } else if( window.innerWidth >= 1280 ) {
     // big screen
-    columns = 2;
+    layout = 'big';
+    document.getElementById('tab-tree').checked = true;
   }
-  // page layout
-  let elemPage = document.getElementById("page");
-  elemPage.style.gridTemplateColumns = "repeat("+columns+", 1fr)";
-  elemPage.style.gridTemplateRows = "repeat("+rows+", 1fr)";
-  // view template
-  let elemViewTemplate = document.createElement("div");
-  elemViewTemplate.setAttribute('class', "view");
-  // template menu
-  let elemMenu = document.createElement("div");
-  elemMenu.setAttribute('class', "menu");
-  elemViewTemplate.appendChild(elemMenu);
-  // template menu buttons
-  let mode = ['tree', 'chat', 'stream', 'info'];
-  for(const m of mode) {
-    let elemMenuButton = document.createElement("button");
-    elemMenuButton.setAttribute('class', "menu-button");
-    elemMenuButton.innerText = m.toUpperCase();
-    elemMenu.appendChild(elemMenuButton);
-  }
-  // backstage area
-  let elemBackstage = document.createElement("div");
-  elemBackstage.style.display = 'none';
-  elemPage.appendChild(elemBackstage);
-  // tree
-  let elemTree = document.createElement("div");
-  elemTree.setAttribute('id', mode[0]);
-  elemTree.setAttribute('class', mode[0]);
-  elemBackstage.appendChild(elemTree);
-  // chat
-  let elemChat = document.createElement("div");
-  elemChat.setAttribute('id', mode[1]);
-  elemChat.setAttribute('class', mode[1]);
-  elemBackstage.appendChild(elemChat);
-  // chat output
-  let elemChatOutput = document.createElement("div");
-  elemChatOutput.setAttribute('id', "chat-output");
-  elemChat.appendChild(elemChatOutput);
-  // chat input
-  let elemChatInput = document.createElement("div");
-  elemChatInput.setAttribute('id', "chat-input");
-  elemChat.appendChild(elemChatInput);
-  let elemChatInputForm = document.createElement("form");
-  elemChatInput.appendChild(elemChatInputForm);
-  elemChatInputForm.addEventListener('submit', cmdMessage, true);
-  let elemChatInputFormMessage = document.createElement("input");
-  elemChatInputFormMessage.setAttribute('id', "chat-input-message");
-  elemChatInputFormMessage.setAttribute('type', "text");
-  elemChatInputFormMessage.setAttribute('placeholder', "Enter Message...");
-  elemChatInputFormMessage.setAttribute('autocomplete', "off");
-  elemChatInputFormMessage.setAttribute('required', "true");
-  elemChatInputForm.appendChild(elemChatInputFormMessage);
-  let elemChatInputFormSend = document.createElement("input");
-  elemChatInputFormSend.setAttribute('id', "chat-input-send");
-  elemChatInputFormSend.setAttribute('type', "submit");
-  elemChatInputFormSend.setAttribute('value', "SEND");
-  elemChatInputForm.appendChild(elemChatInputFormSend);
-  // stream
-  let elemStream = document.createElement("div");
-  elemStream.setAttribute('id', mode[2]);
-  elemStream.setAttribute('class', mode[2]);
-  elemBackstage.appendChild(elemStream);
-  let elemStreamFrontend = document.createElement("div");
-  elemStreamFrontend.setAttribute('id', "stream-frontend");
-  elemStream.appendChild(elemStreamFrontend);
-  let elemStreamBackend = document.createElement("div");
-  elemStreamBackend.setAttribute('id', "stream-backend");
-  elemStreamBackend.style.display = 'none';
-  elemStream.appendChild(elemStreamBackend);
-  // info
-  let elemInfo = document.createElement("div");
-  elemInfo.setAttribute('id', mode[3]);
-  elemInfo.setAttribute('class', mode[3]);
-  elemBackstage.appendChild(elemInfo);
-  // fill every page grid item with a view
-  let gridItemCount = columns * rows;
-  for(let i = 0; i < gridItemCount; i++) {
-    // create view from template
-    let elemView = elemViewTemplate.cloneNode(true);
-    // view content
-    let elemContent = elemBackstage.getElementsByClassName(mode[i])[0];
-    elemView.appendChild(elemContent);
-    // add view to page grid
-    elemPage.appendChild(elemView);
-  }
-  // menu event listeners
-  let menuButtons = document.getElementsByClassName('menu-button');
-  for(const b of menuButtons) {
-    b.addEventListener('click', changeView);
-  }
-
-  function changeView(e) {
-    console.log(e.target);
-  }
+  windowResize();
+  document.getElementById('chat-input').addEventListener('submit', cmdMessage, true);
+  document.getElementById('chat-input-message').addEventListener('keydown', cmdMessage, true);
+  window.addEventListener('resize', windowResize);
 
   /********SOCKETS********/
 
@@ -294,24 +196,46 @@ window.addEventListener('DOMContentLoaded', (event) => {
   }
 
   function cmdMessage(e) {
+    // handle textarea inputs
+    if(e.type === 'keydown') {
+      switch (e.key) {
+        case 'Enter':
+          if(e.ctrlKey === true) {
+            // add a newline
+            let elemInput = document.getElementById('chat-input-message');
+            elemInput.value += '\n';
+            elemInput.scrollTop = elemInput.scrollHeight;
+            return;
+          }
+          break;
+        default:
+          return;
+      }
+    }
     e.preventDefault();
+    // validate message
     let elemInput = document.getElementById('chat-input-message');
-    // get message
-    let message = elemInput.value;
-    // clear input
-    elemInput.value = '';
+    if(elemInput.value.length < 1) {
+      return;
+    }
+    // validate user room
+    if(!clients[socket.id].room) {
+      return;
+    }
     // send message
     Object.keys(clients).forEach((key) => {
       if(key != socket.id) {
         if(clients[key].room == clients[socket.id].room) {
-          wrtc.sendMessage(key, clients[socket.id].room, message);
+          wrtc.sendMessage(key, clients[socket.id].room, elemInput.value);
         }
       }
     });
     // show sent messages
-    clientMessage(socket.id, clients[socket.id].room, message, () => {
+    clientMessage(socket.id, clients[socket.id].room, elemInput.value, () => {
       console.log('Client message');
     });
+    // clear input
+    elemInput.value = '';
   }
 
   function cmdToggleCamera(e) {
@@ -629,7 +553,7 @@ window.addEventListener('DOMContentLoaded', (event) => {
     // create the message element
     let elemMessage = document.createElement("p");
     elemMessage.setAttribute('class', "message-message");
-    elemMessage.innerHTML = bbcode.parse(message);
+    bbcode.parsedToHTML(bbcode.parse(message), elemMessage);
     elemMessageDiv.appendChild(elemMessage);
     // update DOM
     let elemChatOutput = document.getElementById("chat-output");
@@ -721,12 +645,16 @@ window.addEventListener('DOMContentLoaded', (event) => {
   }
 
   function chatToggleStream(id, state) {
-    let elemMedia = document.getElementById("media-"+id);
-    if(state && elemMedia.parentElement.id != 'stream-backend') {
+    if(clients[id].room !== clients[socket.id].room) {
+      // don't show streams from other rooms
+      return;
+    }
+    let elmMedia = document.getElementById("media-"+id);
+    if(state && elmMedia.parentElement.id != 'stream-backend') {
       // already enabled
       return;
     }
-    if(!state && elemMedia.parentElement.id != 'stream-frontend') {
+    if(!state && elmMedia.parentElement.id != 'stream-frontend') {
       // already disabled
       return;
     }
@@ -739,45 +667,150 @@ window.addEventListener('DOMContentLoaded', (event) => {
       return;
     }
     // get streams count
-    let elemStream = document.getElementById("stream-frontend");
-    let count = elemStream.childElementCount;
-    count = state ? count+1 : count-1;
-    console.log(count);
-    // calculate columns and rows
-    let columns, rows;
-    let num = Math.sqrt(count);
-    if(Number.isInteger(num)) {
-      columns = num;
-      rows = num;
-    } else {
-      let int = Math.floor(num);
-      let rest = num % 1;
-      if(rest < 0.5) {
-        columns = int + 1;
-        rows = int;
-      } else {
-        columns = int + 1;
-        rows = int + 1;
+    let elmStreamFrontend = document.getElementById('stream-frontend');
+    let streamsCount = elmStreamFrontend.childElementCount;
+    streamsCount = state ? streamsCount+1 : streamsCount-1;
+    // toggle stream on big layout
+    let elmStream = document.getElementById('stream');
+    if(layout === 'big') {
+      if(elmStream.style.display !== 'block') {
+        document.getElementById('chat').style.top = '70vh';
+        elmStream.style.display = 'block';
       }
     }
-    columns = columns>0 ? columns : 1;
-    rows = rows>0 ? rows : 1;
-    console.log(columns);
-    console.log(rows);
+    // get available space
+    let arrBoundingRect = [];
+    arrBoundingRect.push(document.getElementById('stream').getBoundingClientRect());
+    arrBoundingRect.push(document.getElementById('chat').getBoundingClientRect());
+    arrBoundingRect.push(document.getElementById('info').getBoundingClientRect());
+    arrBoundingRect.push(document.getElementById('tree').getBoundingClientRect());
+    let boundingRect = arrBoundingRect.find((value) => {return value.width > 0;});
+    let elmAspectRatio = Number(boundingRect.width) / Number(boundingRect.height);
+    // calculate columns and rows
+    let columns, rows;
+    if(elmAspectRatio >= 1) {
+      rows = Math.sqrt(streamsCount / elmAspectRatio);
+      rows = Math.floor(rows);
+      rows = rows>0 ? rows : 1;
+      columns = streamsCount / rows;
+      columns = Math.ceil(columns);
+    } else {
+      elmAspectRatio = 1 / elmAspectRatio;
+      columns = Math.sqrt(streamsCount / elmAspectRatio);
+      columns = Math.floor(columns);
+      columns = columns>0 ? columns : 1;
+      rows = streamsCount / columns;
+      rows = Math.ceil(rows);
+    }
+    let columnSize = Math.floor(boundingRect.width / columns);
+    columnSize = columnSize<256 ? 256 : columnSize;
+    let rowSize = Math.floor(boundingRect.height / rows);
+    rowSize = rowSize<144 ? 144 : rowSize;
     // are we adding or removing
     if(state) {
       // change style
-      elemStream.style.gridTemplateColumns = "repeat("+columns+", 1fr)";
-      elemStream.style.gridTemplateRows = "repeat("+rows+", 1fr)";
+      elmStreamFrontend.style.gridTemplateColumns = "repeat("+columns+", "+columnSize+"px)";
+      elmStreamFrontend.style.gridTemplateRows = "repeat("+rows+", "+rowSize+"px)";
       // add stream
-      elemStream.appendChild(elemMedia);
+      if(socket.id === id) {
+        elmStreamFrontend.insertBefore(elmMedia, elmStreamFrontend.childNodes[0]);
+      } else {
+        elmStreamFrontend.appendChild(elmMedia);
+      }
     } else {
       // remove stream
-      document.getElementById("stream-backend").appendChild(elemMedia);
+      document.getElementById("stream-backend").appendChild(elmMedia);
       // change style
-      elemStream.style.gridTemplateColumns = "repeat("+columns+", 1fr)";
-      elemStream.style.gridTemplateRows = "repeat("+rows+", 1fr)";
+      elmStreamFrontend.style.gridTemplateColumns = "repeat("+columns+", "+columnSize+"px)";
+      elmStreamFrontend.style.gridTemplateRows = "repeat("+rows+", "+rowSize+"px)";
     }
+    // toggle stream on big layout
+    if(layout === 'big' && streamsCount < 1) {
+      if(elmStream.style.display !== 'none') {
+        elmStream.style.display = 'none';
+        document.getElementById('chat').style.top = '0';
+      }
+    }
+  }
+
+  function windowResize() {
+    // SCALE
+    let scaleHTML;
+    let scaleMenu;
+    if(window.devicePixelRatio < 1.5) {
+      // normal display
+      scaleHTML = (window.innerWidth * 16 / 1920);
+      scaleHTML = (scaleHTML < 16) ? 16 : scaleHTML;
+      scaleHTML = scaleHTML * window.devicePixelRatio;
+      scaleHTML = Math.round(scaleHTML);
+      scaleMenu = window.innerWidth>768 ? scaleHTML*0.75 : scaleHTML*1.25;
+      scaleMenu = Math.round(scaleMenu);
+    } else {
+      // retina display
+      scaleHTML = Math.round( (window.screen.width * 16 / 1080) * Math.pow(window.devicePixelRatio, 3) );
+      scaleHTML = (scaleHTML < 16) ? 16 : scaleHTML;
+      scaleMenu = scaleHTML;
+    }
+    let elmHTML = document.getElementsByTagName('html')[0];
+    elmHTML.style.fontSize = scaleHTML+'px';
+    elmHTML.style.setProperty('--scaleMenu', scaleMenu+'px');
+    // LAYOUT
+    if( layout !== 'small' && window.devicePixelRatio > 1.5 || window.innerWidth < 768) {
+      // small screen
+      layout = 'small';
+    } else if( layout !== 'medium' &&  window.innerWidth >= 768 && window.innerWidth < 1280 ) {
+      // medium screen
+      if(document.getElementById('tab-tree').checked) {
+        document.getElementById('tab-chat').checked = true;
+      }
+      if(!document.getElementById('tab-stream').checked) {
+        document.getElementById('stream').style.display = null;
+        document.getElementById('chat').style.top = null;
+      }
+      layout = 'medium';
+    } else if( layout !== 'big' && window.innerWidth >= 1280 ) {
+      // big screen
+      if(document.getElementById('stream-frontend').childElementCount > 0) {
+        document.getElementById('chat').style.top = '70vh';
+        document.getElementById('stream').style.display = 'block';
+      }
+      layout = 'big';
+    }
+    // RESIZE STREAM
+    // get streams count
+    let elmStreamFrontend = document.getElementById('stream-frontend');
+    let streamsCount = elmStreamFrontend.childElementCount;
+    // get available space
+    let arrBoundingRect = [];
+    arrBoundingRect.push(document.getElementById('stream').getBoundingClientRect());
+    arrBoundingRect.push(document.getElementById('chat').getBoundingClientRect());
+    arrBoundingRect.push(document.getElementById('info').getBoundingClientRect());
+    arrBoundingRect.push(document.getElementById('tree').getBoundingClientRect());
+    let boundingRect = arrBoundingRect.find((value) => {return value.width > 0;});
+    let elmAspectRatio = Number(boundingRect.width) / Number(boundingRect.height);
+    // calculate columns and rows
+    let columns, rows;
+    if(elmAspectRatio >= 1) {
+      rows = Math.sqrt(streamsCount / elmAspectRatio);
+      rows = Math.floor(rows);
+      rows = rows>0 ? rows : 1;
+      columns = streamsCount / rows;
+      columns = Math.ceil(columns);
+    } else {
+      elmAspectRatio = 1 / elmAspectRatio;
+      columns = Math.sqrt(streamsCount / elmAspectRatio);
+      columns = Math.floor(columns);
+      columns = columns>0 ? columns : 1;
+      rows = streamsCount / columns;
+      rows = Math.ceil(rows);
+    }
+    let columnSize = Math.floor(boundingRect.width / columns);
+    columnSize = columnSize<256 ? 256 : columnSize;
+    let rowSize = Math.floor(boundingRect.height / rows);
+    rowSize = rowSize<144 ? 144 : rowSize;
+    // update stream
+    elmStreamFrontend.style.gridTemplateColumns = "repeat("+columns+", "+columnSize+"px)";
+    elmStreamFrontend.style.gridTemplateRows = "repeat("+rows+", "+rowSize+"px)";
   }
 
   function toggleSpoiler(e) {
@@ -806,7 +839,27 @@ window.addEventListener('DOMContentLoaded', (event) => {
     }
     // create new description
     let elemDescription = document.createElement("div");
-    elemDescription.innerHTML = bbcode.parse(room.description);
+    let strDescription = room.description + `
+    [code]
+    let a = 2;
+      let b = 3;
+        console.log(a+b);
+    [/code]
+    [code=js]
+    let a = 2;
+      let b = 3;
+        console.log(a+b);
+    [/code]
+      
+    [pre]
+          This text is preformated.
+        it keeps the spaces       .
+    asdasdasdas
+    [/pre]
+    [spoiler]The hero dies at the end sdklfmsdmkfmsdlkflsd pfl dl fsld fsd fokdsijfiojsdui fjiosdfk[/spoiler]
+    [spoiler=Mario]I save the pricess[/spoiler]
+    `;
+    bbcode.parsedToHTML(bbcode.parse(strDescription), elemDescription);
     elemInfo.appendChild(elemDescription);
   }
 
