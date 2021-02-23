@@ -839,26 +839,7 @@ window.addEventListener('DOMContentLoaded', (event) => {
     }
     // create new description
     let elemDescription = document.createElement("div");
-    let strDescription = room.description + `
-    [code]
-    let a = 2;
-      let b = 3;
-        console.log(a+b);
-    [/code]
-    [code=js]
-    let a = 2;
-      let b = 3;
-        console.log(a+b);
-    [/code]
-      
-    [pre]
-          This text is preformated.
-        it keeps the spaces       .
-    asdasdasdas
-    [/pre]
-    [spoiler]The hero dies at the end sdklfmsdmkfmsdlkflsd pfl dl fsld fsd fokdsijfiojsdui fjiosdfk[/spoiler]
-    [spoiler=Mario]I save the pricess[/spoiler]
-    `;
+    let strDescription = room.description;
     bbcode.parsedToHTML(bbcode.parse(strDescription), elemDescription);
     elemInfo.appendChild(elemDescription);
   }
