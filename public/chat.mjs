@@ -72,15 +72,17 @@ window.addEventListener('DOMContentLoaded', (event) => {
       if(clients[data.id].room == clients[socket.id].room) {
         if(data.id != socket.id) {
           // remote client is leaving the room
-          wrtc.closeChannel(data.id, clients[socket.id].room);
-          wrtc.closeStream(data.id);
+          wrtc.closeChannel(data.id, 'room'+String.fromCharCode(29)+clients[socket.id].room);
+          wrtc.closeStream(data.id, 'video');
+          wrtc.closeStream(data.id, 'audio');
           chatToggleStream(data.id, false);
         } else {
           // local client is leaving the room
           Object.keys(clients).forEach((key) => {
             if(key != socket.id) {
               if(clients[key].room == clients[socket.id].room) {
-                wrtc.closeStream(key);
+                wrtc.closeStream(key, 'video');
+                wrtc.closeStream(key, 'audio');
                 chatToggleStream(key, false);
               }
             }
@@ -95,8 +97,15 @@ window.addEventListener('DOMContentLoaded', (event) => {
         if(clients[data.id].room == clients[socket.id].room) {
           if(data.id != socket.id) {
             // remote client is joining the room
-            wrtc.createChannel(data.id, data.room);
-            wrtc.openStream(data.id);
+            wrtc.createChannel(data.id, 'room'+String.fromCharCode(29)+data.room);
+            // if remote client has not muted local client
+            if(clients[data.id].media['monitor'][socket.id] && clients[socket.id].media.camera) {
+              wrtc.openStream(data.id, 'video');
+            }
+            if(clients[data.id].media['speaker'][socket.id] && clients[socket.id].media.microphone) {
+              wrtc.openStream(data.id, 'audio');
+            }
+            // if client is streaming video show video element
             if(clients[data.id].media['camera']) {
               chatToggleStream(data.id, true);
             }
@@ -105,7 +114,15 @@ window.addEventListener('DOMContentLoaded', (event) => {
             Object.keys(clients).forEach((key) => {
               if(key != socket.id) {
                 if(clients[key].room == clients[socket.id].room) {
-                  wrtc.openStream(key);
+                  // if remote client has not muted local client
+                  //TODO: take mic and cam mute into account
+                  if(clients[key].media['monitor'][socket.id] && clients[socket.id].media.camera) {
+                    wrtc.openStream(key, 'video');
+                  }
+                  if(clients[key].media['speaker'][socket.id] && clients[socket.id].media.microphone) {
+                    wrtc.openStream(key, 'audio');
+                  }
+                  // if client is streaming video show video element
                   if(clients[key].media['camera']) {
                     chatToggleStream(key, true);
                   }
@@ -126,23 +143,58 @@ window.addEventListener('DOMContentLoaded', (event) => {
     switch(data.type) {
       case 'camera':
         clients[data.activator].media[data.type] = data.state;
+        if(data.activator === socket.id) {
+          Object.keys(clients).forEach((key) => {
+            if(key !== socket.id) {
+              if(data.state) {
+                wrtc.openStream(key, 'video');
+              } else {
+                wrtc.closeStream(key, 'video');
+              }
+            }
+          });
+        }
         chatToggleStream(data.activator, data.state);
         break;
       case 'microphone':
         clients[data.activator].media[data.type] = data.state;
+        if(data.activator === socket.id) {
+          Object.keys(clients).forEach((key) => {
+            if(key !== socket.id) {
+              if(data.state) {
+                wrtc.openStream(key, 'audio');
+              } else {
+                wrtc.closeStream(key, 'audio');
+              }
+            }
+          });
+        }
         break;
       case 'monitor':
         clients[data.activator].media[data.type][data.target] = data.state;
-        if(data.activator === socket.id) {
-          if(data.target === socket.id) {
-            chatToggleStreamAll(data.state);
+        if(data.activator !== socket.id) {
+          if(data.state) {
+            // unmuted
+            wrtc.openStream(data.activator, 'video');
           } else {
-            chatToggleStream(data.target, data.state);
+            // muted
+            wrtc.closeStream(data.activator, 'video');
           }
+        } else {
+          chatToggleStream(data.target, data.state);
         }
         break;
       case 'speaker':
         clients[data.activator].media[data.type][data.target] = data.state;
+        if(data.activator !== socket.id) {
+          if(data.state) {
+            // unmuted
+            wrtc.openStream(data.activator, 'audio');
+          } else {
+            // muted
+            wrtc.closeStream(data.activator, 'audio');
+          }
+        }
         break;
       default:
         break;
@@ -176,9 +228,16 @@ window.addEventListener('DOMContentLoaded', (event) => {
   });
 
   function wrtcReceiveMessage(id, channel, message) {
-    clientMessage(id, channel, message, () => {
-      console.log('Client message');
-    });
+    let ch = channel.split(String.fromCharCode(29));
+    switch(ch[0]) {
+      case 'room':
+        clientMessage(id, ch[1], message, () => {
+          console.log('Client message');
+        });
+        break;
+      default:
+        break;
+    }
   }
 
   /********COMMANDS********/
@@ -226,7 +285,7 @@ window.addEventListener('DOMContentLoaded', (event) => {
     Object.keys(clients).forEach((key) => {
       if(key != socket.id) {
         if(clients[key].room == clients[socket.id].room) {
-          wrtc.sendMessage(key, clients[socket.id].room, elemInput.value);
+          wrtc.sendMessage(key, 'room'+String.fromCharCode(29)+clients[socket.id].room, elemInput.value);
         }
       }
     });
@@ -262,10 +321,12 @@ window.addEventListener('DOMContentLoaded', (event) => {
           }
         }
       });
+      chatToggleStreamAll(state);
       socket.emit('cmdMedia', {target: id, type: 'monitor', state: state});
     } else {
       // toggle client
       let state = wrtc.toggleMedia('video', id);
+      chatToggleStream(id, state);
       socket.emit('cmdMedia', {target: id, type: 'monitor', state: state});
     }
   }

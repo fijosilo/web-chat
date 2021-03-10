@@ -54,13 +54,12 @@ class WRTC {
       // create channel event handlers
       this._channels[peer][e.channel.label] = e.channel;
       e.channel.onopen = (e) => {
-        console.log('webrtc channel open');
+        //
       };
       e.channel.onmessage = (e) => {
         this._onChannelMessage(peer, e.target.label, e.data);
       };
       e.channel.onclose = (e) => {
-        console.log('webrtc channel close');
         if(this._channels[peer][e.target.label]) {
           delete this._channels[peer][e.target.label];
         }
@@ -154,7 +153,7 @@ class WRTC {
     // create channel
     this._channels[peer][channel] = this._connections[peer].createDataChannel(channel);
     this._channels[peer][channel].onopen = (e) => {
-      console.log('webrtc channel open');
+      //
     };
     this._channels[peer][channel].onmessage = (e) => {
       this._onChannelMessage(peer, e.target.label, e.data);
@@ -162,7 +161,7 @@ class WRTC {
     this._channels[peer][channel].onclose = (e) => {
       console.log('webrtc channel close');
       // delete the channel
-      if(this._channels[peer][e.target.label]) {
+      if(this._channels[peer] && this._channels[peer][e.target.label]) {
         delete this._channels[peer][e.target.label];
       }
     };
@@ -215,17 +214,25 @@ class WRTC {
     return state;
   }
 
-  openStream(peer) {
+  openStream(peer, type) {
     // add tracks to connection
     for(let track of this._MediaStream.getTracks()) {
-      this._connections[peer].addTrack(track);
+      if(track.kind === type) {
+        try {
+          this._connections[peer].addTrack(track);
+        } catch(err) {
+          // track already added or connection closed
+        }
+      }
     }
   }
 
-  closeStream(peer) {
+  closeStream(peer, type) {
     // remove tracks from connection
     for(let sender of this._connections[peer].getSenders()) {
-      this._connections[peer].removeTrack(sender);
+      if(sender.track && sender.track.kind === type) {
+        this._connections[peer].removeTrack(sender);
+      }
     }
   }
 

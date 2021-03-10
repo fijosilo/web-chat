@@ -3,8 +3,8 @@ require('dotenv').config();
 const express = require('express');
 const app = express();
 const fs = require('fs');
-let privateKey = fs.readFileSync( './ssl/server.key' );
-let certificate = fs.readFileSync( './ssl/server.crt' );
+let sslKey = fs.readFileSync( process.env.SSL_KEY );
+let sslCrt = fs.readFileSync( process.env.SSL_CRT );
 const helmet = require('helmet');
 const routes = require('./components/routes.js');
 
@@ -29,7 +29,7 @@ const store = new KnexSessionStore({knex});
 const Authenticate = require('./components/authenticate.js');
 const auth = new Authenticate();
 
-const https = require('https').createServer({key: privateKey, cert: certificate}, app);
+const https = require('https').createServer({key: sslKey, cert: sslCrt}, app);
 const io = require('socket.io')(https);
 const sockets = require('./components/sockets.js');
 

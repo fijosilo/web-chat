@@ -52,7 +52,9 @@ module.exports = async function(io) {
         wrtcPolite[socket.id][key] = true;
       }
       clients[socket.id].media.monitor[key] = true;
+      clients[key].media.monitor[socket.id] = true;
       clients[socket.id].media.speaker[key] = true;
+      clients[key].media.speaker[socket.id] = true;
     });
     // update clients
     socket.emit('connected', {clients: clients, rooms: rooms, iceservers: iceservers, polite: wrtcPolite[socket.id]});

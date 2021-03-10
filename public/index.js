@@ -1,30 +1,31 @@
-window.onload = function() {
-  document.getElementById('id-anonymous').addEventListener('click', () => {
-    document.getElementById('id-password').disabled = true;
-    document.getElementById('id-email').disabled = true;
+
+window.addEventListener('DOMContentLoaded', (event) => {
+  document.getElementById('mode-anonymous').addEventListener('click', () => {
+    document.getElementById('password').getElementsByTagName('input')[0].disabled = true;
+    document.getElementById('email').getElementsByTagName('input')[0].disabled = true;
   });
-  document.getElementById('id-login').addEventListener('click', () => {
-    document.getElementById('id-password').disabled = false;
-    document.getElementById('id-email').disabled = true;
+  document.getElementById('mode-login').addEventListener('click', () => {
+    document.getElementById('password').getElementsByTagName('input')[0].disabled = false;
+    document.getElementById('email').getElementsByTagName('input')[0].disabled = true;
   });
-  document.getElementById('id-register').addEventListener('click', () => {
-    document.getElementById('id-password').disabled = false;
-    document.getElementById('id-email').disabled = false;
+  document.getElementById('mode-register').addEventListener('click', () => {
+    document.getElementById('password').getElementsByTagName('input')[0].disabled = false;
+    document.getElementById('email').getElementsByTagName('input')[0].disabled = false;
   });
-  document.getElementById('id-form').addEventListener('submit', (event) => {
+  document.getElementsByTagName('form')[0].addEventListener('submit', (event) => {
     event.preventDefault();
     // remove old warning
-    for(let elem of document.getElementsByClassName('id-error')) {
-      elem.remove();
+    let elemWarning = document.getElementById('error');
+    if(elemWarning) {
+      elemWarning.remove();
     }
     // grab form data
-    let form = document.getElementById('id-form');
+    let form = document.getElementsByTagName('form')[0];
     let formData = new FormData(form);
     let data = {};
     for(let pair of formData.entries()) {
       data[pair[0]] = pair[1];
     }
-    console.log(data.password);
     if(data.mode === 'Anonymous') {
       data.password = '********';
     }
@@ -56,29 +57,28 @@ window.onload = function() {
           return;
         }
         // create new warning
-        console.log(data);
         let divs = form.getElementsByTagName('div');
         let elem = document.createElement("p");
-        elem.setAttribute('class', 'id-error');
+        elem.setAttribute('id', 'error');
         elem.innerText = data.error;
         switch(data.code) {
           case 'username':
-            divs[0].appendChild(elem);
+            document.getElementById('username').appendChild(elem);
             break;
           case 'password':
-            divs[1].appendChild(elem);
+            document.getElementById('password').appendChild(elem);
             break;
           case 'email':
-            divs[2].appendChild(elem);
+            document.getElementById('email').appendChild(elem);
             break;
           case 'mode':
-            divs[3].appendChild(elem);
+            document.getElementById('mode').appendChild(elem);
             break;
           default:
             if(data.message) {
               elem.innerText = data.message;
             }
-            divs[4].appendChild(elem);
+            document.getElementById('submit').appendChild(elem);
             break;
         }
         return;
@@ -88,4 +88,4 @@ window.onload = function() {
       });
     return;
   }, true);
-};
+});

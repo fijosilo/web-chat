@@ -2,10 +2,10 @@
   "name": "web-chat",
   "version": "1.0.0",
   "description": "A p2p/sockets.io web chat",
-  "main": "server.js",
+  "main": "app.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node server.js"
+    "start": "node app.js"
   },
   "author": "fijosilo",
   "license": "MIT",
@@ -17,13 +17,13 @@
     "express": "*",
     "express-session": "*",
     "helmet": "^4.4.1",
-    "knex": "^0.21.17",
-    "mariadb": "*",
+    "knex": "^0.21.18",
+    "mariadb": "^2.5.3",
     "mysql": "*",
     "passport": "*",
     "passport-local": "*",
     "passport.socketio": "*",
-    "socket.io": "^3.1.0",
+    "socket.io": "^3.1.1",
     "uuid": "*"
   }
 }
